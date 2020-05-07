@@ -11,23 +11,28 @@ from os.path import basename
 import multiprocessing
 from joblib import Parallel, delayed
 
+log = True
+
 
 def exec_console_cmd(cmd):
     try:
-        res = subprocess.call(cmd, shell=True, stdout=DEVNULL, stderr=STDOUT)
+        if log:
+            res = subprocess.call(cmd, shell=True)
+        else:
+            res = subprocess.call(cmd, shell=True, stdout=DEVNULL, stderr=STDOUT)
     except OSError as e:
         print(e)
 
 
 def crop_pc_by_bounds(path, out, xmin, ymin, xmax, ymax):
     cmd = f'las2las {path} --output {out} --minx {xmin} --miny {ymin} --maxx {xmax} --maxy {ymax}'
-    # print("\nCROPPING PC...")
+    if log: print("\nCROPPING PC...")
     exec_console_cmd(cmd)
 
 
 def crop_tif_by_bounds(path, out, xmin, ymin, xmax, ymax):
     cmd = f'gdalwarp -te {xmin} {ymin} {xmax} {ymax} {path} {out}'
-    # print("\nCROPPING TIF...")
+    if log: print("\nCROPPING TIF...")
     exec_console_cmd(cmd)
 
 
@@ -55,8 +60,8 @@ def process_row(y):
 
 if __name__ == "__main__":
     data_dir = f'/mnt/data/davletshina/datasets/Bera_MDE/'
-    pc_path = "/mnt/data/davletshina/datasets/Bera_MDE/KirbyLeafOn2017PointCloudEntireSite.las"
-    tif_path = "/mnt/data/davletshina/datasets/Bera_MDE/KirbyLeafOn2017RGBNEntireSite.tif"
+    pc_path = "/mnt/data/davletshina/datasets/Bera_MDE/KirbyLeafOff2017PointCloudEntireSite.las"
+    tif_path = "/mnt/data/davletshina/datasets/Bera_MDE/KirbyLeafOff2017RGBNEntireSitePCCrop.tif"
 
     pc_name = basename(pc_path)[:-4]
     tif_name = basename(tif_path)[:-4]
