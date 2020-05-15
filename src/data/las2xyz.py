@@ -24,3 +24,14 @@ class LasReader:
         y_dim = LasReader.scaled_dimension(las_file, las_file.Y)
         z_dim = LasReader.scaled_dimension(las_file, las_file.Z)
         return np.c_[x_dim, y_dim, z_dim]
+
+    @staticmethod
+    def get_dimensions(las_file):
+        return np.c_[las_file.x, las_file.y, las_file.z]
+
+    @staticmethod
+    def get_xyz(path):
+        infile = LasReader.read(path)
+        xyz = LasReader.get_dimensions(infile)
+        infile.close()
+        return xyz
