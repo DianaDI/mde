@@ -51,8 +51,8 @@ def process_file(tif_file):
 if __name__ == "__main__":
     print("STARTING...")
     data_dir = f'/mnt/data/davletshina/datasets/Bera_MDE'
-    pc_path = "/mnt/data/davletshina/datasets/Bera_MDE/KirbyLeafOff2017PointCloudEntireSite.las"
-    tif_path = "/mnt/data/davletshina/datasets/Bera_MDE/KirbyLeafOff2017RGBNEntireSitePCCrop.tif"
+    pc_path = "/mnt/data/davletshina/datasets/Bera_MDE/KirbyLeafOn2017PointCloudEntireSite.las"
+    tif_path = "/mnt/data/davletshina/datasets/Bera_MDE/KirbyLeafOn2017RGBNEntireSite.tif"
 
     pc_name = basename(pc_path)[:-4]
     tif_name = basename(tif_path)[:-4]
