@@ -1,7 +1,7 @@
 from glob import glob
 import pandas as pd
 import numpy as np
-from PIL import Image
+import cv2
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
 
@@ -28,7 +28,7 @@ class DatadirParser():
 
 
 class TrainValTestSplitter:
-    def __init__(self, data, depth, test_size=0.2, val=True):
+    def __init__(self, images, depth, test_size=0.2, val=True):
         """
         Train-validation-test splitter, stores all the filenames
         :param path_to_data: path to images
@@ -36,7 +36,7 @@ class TrainValTestSplitter:
         """
         self.val = val
         self.data = pd.DataFrame()
-        self.data['image'] = data
+        self.data['image'] = images
         self.data['depth'] = depth
         self.test_size = test_size
         self.random_state = 42
@@ -47,7 +47,7 @@ class TrainValTestSplitter:
 
     def _split_stats(self, df):
         print(f'Size: {len(df)}')
-        print(f'Percentage from original data: {len(df) / len(self.data)}')
+        print(f'Percentage from original images: {len(df) / len(self.data)}')
 
     def _split_data(self):
         """
@@ -57,23 +57,24 @@ class TrainValTestSplitter:
         data_train, data_test, labels_train, labels_test = train_test_split(self.data['image'], self.data['depth'], test_size=self.test_size,
                                                                             random_state=self.random_state)
         if self.val:
-            data_train, data_val, labels_train, labels_val = train_test_split(data_train, labels_train, test_size=self.test_size,
+            data_train, data_val, labels_train, labels_val = train_test_split(data_train.reset_index(drop=True), labels_train.reset_index(drop=True),
+                                                                              test_size=self.test_size,
                                                                               random_state=self.random_state)
 
         print('=============Train subset===============')
-        self.data_train['image'] = data_train
-        self.data_train['depth'] = labels_train
+        self.data_train['image'] = data_train.reset_index(drop=True)
+        self.data_train['depth'] = labels_train.reset_index(drop=True)
         self._split_stats(data_train)
 
         print('=============Test subset===============')
-        self.data_test['image'] = data_test
-        self.data_test['depth'] = labels_test
+        self.data_test['image'] = data_test.reset_index(drop=True)
+        self.data_test['depth'] = labels_test.reset_index(drop=True)
         self._split_stats(data_test)
 
         if self.val:
             print('===========Validation subset============')
-            self.data_val['image'] = data_val
-            self.data_val['depth'] = labels_val
+            self.data_val['image'] = data_val.reset_index(drop=True)
+            self.data_val['depth'] = labels_val.reset_index(drop=True)
             self._split_stats(data_val)
 
 
@@ -82,25 +83,11 @@ class BeraDataset(Dataset):
         self.img_filenames = img_filenames
         self.depth_filenames = depth_filenames
 
-    def __len__(self) -> int:
+    def __len__(self):
         return len(self.depth_filenames)
 
-    def __getitem__(self, index) -> np.array:
+    def __getitem__(self, index):
         """Reads sample"""
-        image = Image.open(self.img_filenames[index])
-        print(self.depth_filenames[index])
+        image = cv2.imread(self.img_filenames[index])
         label = np.load(self.depth_filenames[index], allow_pickle=True)
-        return {'image': image, 'label': label}
-
-
-## Example usage
-parsed = DatadirParser()
-img, d = parsed.get_parsed()
-
-spliter = TrainValTestSplitter(img, d)
-train = spliter.data_train
-test = spliter.data_test
-val = spliter.data_val
-
-ds = BeraDataset(train["image"], train["depth"])
-item = ds[0]
+        return {'image': image, 'depth': label}
