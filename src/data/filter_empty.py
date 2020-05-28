@@ -4,13 +4,18 @@ import shutil
 from tqdm import tqdm
 
 
-def is_empty(path):
-    return getsize(path) < 1500
+def is_empty(path, min_size=1500):
+    """
+    Makers comparison in bytes
+    :param path: file path
+    :return: empty if less than min_size value
+    """
+    return getsize(path) < min_size
 
 
 if __name__ == "__main__":
-    splits_dir = "/mnt/data/davletshina/datasets/Bera_MDE/splits"
-    empty_dir = "/mnt/data/davletshina/datasets/Bera_MDE/empty"
+    splits_dir = "/mnt/data/davletshina/datasets/Bera_MDE/splits2"
+    empty_dir = "/mnt/data/davletshina/datasets/Bera_MDE/empty2"
 
     prefixes = ["KirbyLeafOn2017PointCloud", "KirbyLeafOff2017PointCloud"]
     # mv empty point clouds and corresponding imgs
