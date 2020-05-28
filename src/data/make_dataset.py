@@ -78,6 +78,16 @@ class TrainValTestSplitter:
             self._split_stats(data_val)
 
 
+def rebin(arr, new_shape):
+    """Rebin 2D array arr to shape new_shape by averaging over nonzero elements."""
+    shape = (new_shape[0], arr.shape[0] // new_shape[0],
+             new_shape[1], arr.shape[1] // new_shape[1])
+    print(shape)
+    arr2 = arr.reshape(shape)
+    cond = (arr2 > 0).sum(axis=(1, 3))
+    return np.true_divide(arr2.sum(axis=(1, 3)), cond, where=(cond) > 0)
+
+
 class BeraDataset(Dataset):
     def __init__(self, img_filenames, depth_filenames):
         self.img_filenames = img_filenames
@@ -89,5 +99,6 @@ class BeraDataset(Dataset):
     def __getitem__(self, index):
         """Reads sample"""
         image = cv2.imread(self.img_filenames[index])
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         label = np.load(self.depth_filenames[index], allow_pickle=True)
-        return {'image': image, 'depth': label}
+        return {'image': image, 'depth': rebin(label, (128, 128))}
