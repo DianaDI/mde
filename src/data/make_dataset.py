@@ -8,10 +8,10 @@ from sklearn.model_selection import train_test_split
 
 class DatadirParser():
     def __init__(self, data_dir="/mnt/data/davletshina/datasets/Bera_MDE"):
-        self.data_dir = f'{data_dir}/splits'
+        self.data_dir = f'{data_dir}/splits2'
         self.pc_name_prefixes = ["KirbyLeafOff2017PointCloudEntireSite", "KirbyLeafOn2017PointCloudEntireSite"]
         self.img_name_prefixes = ["KirbyLeafOff2017RGBNEntireSite", "KirbyLeafOn2017RGBNEntireSite"]
-        self.depth_dir = f'{data_dir}/depth_maps/*'
+        self.depth_dir = f'{data_dir}/depth_maps2/*'
         self.pc_list = self.get_files(self.data_dir, self.pc_name_prefixes)
         self.img_list = self.get_files(self.data_dir, self.img_name_prefixes)
         self.depth_list = sorted(glob(self.depth_dir))
@@ -47,7 +47,7 @@ class TrainValTestSplitter:
 
     def _split_stats(self, df):
         print(f'Size: {len(df)}')
-        print(f'Percentage from original images: {len(df) / len(self.data)}')
+        print(f'Percentage from original images: {round(len(df) / len(self.data), 3)}')
 
     def _split_data(self):
         """
@@ -82,10 +82,11 @@ def rebin(arr, new_shape):
     """Rebin 2D array arr to shape new_shape by averaging over nonzero elements."""
     shape = (new_shape[0], arr.shape[0] // new_shape[0],
              new_shape[1], arr.shape[1] // new_shape[1])
-    print(shape)
     arr2 = arr.reshape(shape)
     cond = (arr2 > 0).sum(axis=(1, 3))
-    return np.true_divide(arr2.sum(axis=(1, 3)), cond, where=(cond) > 0)
+    out = np.zeros(new_shape)
+    np.true_divide(arr2.sum(axis=(1, 3)), cond, where=(cond) > 0, out=out)
+    return out
 
 
 class BeraDataset(Dataset):
@@ -99,6 +100,8 @@ class BeraDataset(Dataset):
     def __getitem__(self, index):
         """Reads sample"""
         image = cv2.imread(self.img_filenames[index])
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         label = np.load(self.depth_filenames[index], allow_pickle=True)
-        return {'image': image, 'depth': rebin(label, (128, 128))}
+        label = rebin(label, (128, 128))
+        mask = (label != 0).astype(int)
+        return {'image': image, 'depth': label, 'mask': mask}
