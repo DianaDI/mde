@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
+from src.data.transforms import rebin, minmax
 
 
 class DatadirParser():
@@ -28,7 +29,7 @@ class DatadirParser():
 
 
 class TrainValTestSplitter:
-    def __init__(self, images, depth, test_size=0.2, val=True):
+    def __init__(self, images, depth, test_size=0.2, val=True, random_seed=42):
         """
         Train-validation-test splitter, stores all the filenames
         :param path_to_data: path to images
@@ -39,7 +40,7 @@ class TrainValTestSplitter:
         self.data['image'] = images
         self.data['depth'] = depth
         self.test_size = test_size
-        self.random_state = 42
+        self.random_state = random_seed
         self.data_train = pd.DataFrame()
         self.data_test = pd.DataFrame()
         self.data_val = pd.DataFrame()
@@ -78,17 +79,6 @@ class TrainValTestSplitter:
             self._split_stats(data_val)
 
 
-def rebin(arr, new_shape):
-    """Rebin 2D array arr to shape new_shape by averaging over nonzero elements."""
-    shape = (new_shape[0], arr.shape[0] // new_shape[0],
-             new_shape[1], arr.shape[1] // new_shape[1])
-    arr2 = arr.reshape(shape)
-    cond = (arr2 > 0).sum(axis=(1, 3))
-    out = np.zeros(new_shape)
-    np.true_divide(arr2.sum(axis=(1, 3)), cond, where=(cond) > 0, out=out)
-    return out
-
-
 class BeraDataset(Dataset):
     def __init__(self, img_filenames, depth_filenames):
         self.img_filenames = img_filenames
@@ -100,8 +90,8 @@ class BeraDataset(Dataset):
     def __getitem__(self, index):
         """Reads sample"""
         image = cv2.imread(self.img_filenames[index])
-        # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         label = np.load(self.depth_filenames[index], allow_pickle=True)
-        label = rebin(label, (128, 128))
+        label = minmax(rebin(label, (128, 128)))
         mask = (label != 0).astype(int)
         return {'image': image, 'depth': label, 'mask': mask}

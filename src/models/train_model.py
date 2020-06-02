@@ -4,34 +4,85 @@ from torch.autograd import Variable
 import torch.nn as nn
 from torchvision import transforms
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import MultiplicativeLR
 from src.data.make_dataset import DatadirParser, TrainValTestSplitter, BeraDataset
 from src.models.mde_net import MDENet
+from src.models.util import plot_metrics, plot_sample
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", 0)
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", 1)
 loader = transforms.Compose([transforms.ToTensor()])
+
+
+def mean_relative_error(output, target):
+    loss = torch.mean((output - target) / target)
+    return loss
+
+
+def root_mean_squared_error(output, target):
+    loss = torch.sqrt(torch.mean((output - target) ** 2))
+    return loss
+
+
+def compute_metrics(output, target):
+    mre = mean_relative_error(output, target)
+    rmse = root_mean_squared_error(output, target)
+    l1 = nn.L1Loss(output, target)
+    print(f'MRE: {mre}, RMSE: {rmse}, L1: {l1}')
+    return mre, rmse, l1
+
+
+def train_on_batch(data, model, criterion):
+    inp = Variable(data['image'].permute(0, 3, 1, 2)).to(DEVICE, dtype=torch.float)
+    target = Variable(data['depth']).to(DEVICE, dtype=torch.float).unsqueeze(1)
+    mask = data['mask'].to(DEVICE)
+    out = model(inp)
+    loss = criterion(out * mask, target * mask)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    return loss.item()
+
+
+def evaluate_on_batch(data, model, criterion, fig_save_path, mode="validate"):
+    inp = Variable(data['image'].permute(0, 3, 1, 2)).to(DEVICE, dtype=torch.float)
+    target = Variable(data['depth']).to(DEVICE, dtype=torch.float).unsqueeze(1)
+    mask = data['mask'].to(DEVICE)
+    out = model(inp)
+    loss = criterion(out * mask, target * mask)
+    if batch_idx % 10 == 0:
+        for pred, truth in out, target:
+            plot_sample(pred[0, :, :], truth[0, :, :], fig_save_path, batch_idx, mode)
+    return loss.item()
+
 
 if __name__ == '__main__':
 
+    TRAIN = True
+    TEST = False
+    SAVING_PATH = "fpn_model.pth"
+    fig_save_path = "/mnt/data/davletshina/mde/reports/figures"
+
     random_seed = 42
     # set number of cpu cores for images processing
-    num_workers = 4
+    num_workers = 8
     loader_init_fn = lambda worker_id: np.random.seed(random_seed + worker_id)
 
-    lr = 0.00001
-    batch_size = 4
-    num_epochs = 10
+    lr = 0.0001
+    batch_size = 12
+    num_epochs = 5
+
     # dataset
     parser = DatadirParser()
     images, depths = parser.get_parsed()
-    splitter = TrainValTestSplitter(images, depths)
+    splitter = TrainValTestSplitter(images, depths, random_seed=random_seed)
 
-    train = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth)
-    validation = BeraDataset(img_filenames=splitter.data_val.image, depth_filenames=splitter.data_val.depth)
-    test = BeraDataset(img_filenames=splitter.data_test.image, depth_filenames=splitter.data_test.depth)
+    train_ds = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth)
+    validation_ds = BeraDataset(img_filenames=splitter.data_val.image, depth_filenames=splitter.data_val.depth)
+    test_ds = BeraDataset(img_filenames=splitter.data_test.image, depth_filenames=splitter.data_test.depth)
 
-    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = DataLoader(validation, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    test_loader = DataLoader(test, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(validation_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
 
     # network initialization
     model = MDENet().to(DEVICE)
@@ -41,39 +92,41 @@ if __name__ == '__main__':
     print(f'\nNum of parameters: {total_params}. Trainable parameters: {train_total_params}')
 
     criterion = nn.L1Loss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=4e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=4e-5)
+    scheduler = MultiplicativeLR(optimizer, lr_lambda=0.95)
+    if TRAIN:
+        print("\nTRAINING STARTING...")
+        for i in range(num_epochs):
+            print(f'====== Epoch {i} ======')
+            train_loss, valid_loss = [], []
+            model.train()
+            for batch_idx, data in enumerate(train_loader):
+                loss = train_on_batch(data, model, criterion)
+                print(f'Epoch {i}, batch_idx {batch_idx} train loss: {loss}')
+                train_loss.append(loss)
 
-    print("\nTRAINING STARTING...")
-    for i in range(num_epochs):
-        train_loss, valid_loss = [], []
-        # training part
-        model.train()
-        print(f'====== Epoch {i} ======')
-        for batch_idx, data in enumerate(train_loader):
-            inp = Variable(data['image'].permute(0, 3, 1, 2)).to(DEVICE, dtype=torch.float)
-            target = Variable(data['depth']).to(DEVICE, dtype=torch.float).unsqueeze(1)
-            mask = data['mask'].to(DEVICE)
-            out = model(inp)
-            loss = criterion(out * mask, target * mask)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            print(f'Epoch {i}, batch_idx {batch_idx} train loss: {loss.item()}')
-            train_loss.append(loss.item())
+            model.eval()
+            with torch.no_grad():
+                for batch_idx, data in enumerate(val_loader):
+                    loss = evaluate_on_batch(data, model, criterion, fig_save_path)
+                    print(f'Epoch {i}, batch_idx {batch_idx} val loss: {loss}')
+                    valid_loss.append(loss)
+            scheduler.step()
+        torch.save(model.state_dict(), SAVING_PATH)
 
-        # evaluation part
+    if TEST:
+        model = torch.load(SAVING_PATH)
         model.eval()
+        mre, rmse, l1 = [], [], []
         with torch.no_grad():
-            for data in val_loader:
+            for batch_idx, data in enumerate(test_loader):
                 inp = Variable(data['image'].permute(0, 3, 1, 2)).to(DEVICE, dtype=torch.float)
                 target = Variable(data['depth']).to(DEVICE, dtype=torch.float).unsqueeze(1)
                 mask = data['mask'].to(DEVICE)
                 out = model(inp)
-                loss = criterion(out * mask, target * mask)
-                print(f'Epoch {i} validation l1-loss: {loss.item()}')
-                valid_loss.append(loss.item())
-
-        print(f'Epoch: {i} Training Loss: {np.mean(train_loss)}, Valid Loss: {np.mean(valid_loss)}')
-
-    SAVING_PATH = "."
-    torch.save(model.state_dict(), SAVING_PATH)
+                mre_loss, rmse_loss, l1_loss = compute_metrics(out * mask, target * mask)
+                mre.append(mre)
+                rmse.append(rmse)
+                l1.append(l1_loss)
+        plot_metrics([mre, rmse, l1], ["MRE", "RMSE", "L1"], fig_save_path)
+        print(f'Mean MRE Loss: {np.mean(mre)}, RMSE Loss: {np.mean(rmse)}, L1 Loss: {np.mean(l1)}')
