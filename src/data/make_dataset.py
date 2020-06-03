@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
-from src.data.transforms import rebin, minmax
+from src.data.transforms import rebin, minmax, minmax_over_nonzero
 
 
 class DatadirParser():
@@ -92,6 +92,6 @@ class BeraDataset(Dataset):
         image = cv2.imread(self.img_filenames[index])
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         label = np.load(self.depth_filenames[index], allow_pickle=True)
-        label = minmax(rebin(label, (128, 128)))
-        mask = (label != 0).astype(int)
+        label = minmax_over_nonzero(rebin(label, (128, 128)))
+        mask = (label >= 0).astype(int) # 0 is smallest after minmax
         return {'image': image, 'depth': label, 'mask': mask}

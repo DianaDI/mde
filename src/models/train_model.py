@@ -9,7 +9,7 @@ from src.data.make_dataset import DatadirParser, TrainValTestSplitter, BeraDatas
 from src.models.mde_net import MDENet
 from src.models.util import plot_metrics, plot_sample
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", 1)
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", 0)
 loader = transforms.Compose([transforms.ToTensor()])
 
 
@@ -31,10 +31,15 @@ def compute_metrics(output, target):
     return mre, rmse, l1
 
 
-def train_on_batch(data, model, criterion):
+def prepare_var(data):
     inp = Variable(data['image'].permute(0, 3, 1, 2)).to(DEVICE, dtype=torch.float)
     target = Variable(data['depth']).to(DEVICE, dtype=torch.float).unsqueeze(1)
-    mask = data['mask'].to(DEVICE)
+    mask = data['mask'].to(DEVICE).unsqueeze(1)
+    return inp, target, mask
+
+
+def train_on_batch(data, model, criterion):
+    inp, target, mask = prepare_var(data)
     out = model(inp)
     loss = criterion(out * mask, target * mask)
     optimizer.zero_grad()
@@ -44,13 +49,11 @@ def train_on_batch(data, model, criterion):
 
 
 def evaluate_on_batch(data, model, criterion, fig_save_path, mode="validate"):
-    inp = Variable(data['image'].permute(0, 3, 1, 2)).to(DEVICE, dtype=torch.float)
-    target = Variable(data['depth']).to(DEVICE, dtype=torch.float).unsqueeze(1)
-    mask = data['mask'].to(DEVICE)
+    inp, target, mask = prepare_var(data)
     out = model(inp)
     loss = criterion(out * mask, target * mask)
     if batch_idx % 10 == 0:
-        for pred, truth in out, target:
+        for pred, truth in zip(out, target):
             plot_sample(pred[0, :, :], truth[0, :, :], fig_save_path, batch_idx, mode)
     return loss.item()
 
@@ -58,7 +61,7 @@ def evaluate_on_batch(data, model, criterion, fig_save_path, mode="validate"):
 if __name__ == '__main__':
 
     TRAIN = True
-    TEST = False
+    TEST = True
     SAVING_PATH = "fpn_model.pth"
     fig_save_path = "/mnt/data/davletshina/mde/reports/figures"
 
@@ -69,7 +72,7 @@ if __name__ == '__main__':
 
     lr = 0.0001
     batch_size = 12
-    num_epochs = 5
+    num_epochs = 3
 
     # dataset
     parser = DatadirParser()
@@ -120,9 +123,7 @@ if __name__ == '__main__':
         mre, rmse, l1 = [], [], []
         with torch.no_grad():
             for batch_idx, data in enumerate(test_loader):
-                inp = Variable(data['image'].permute(0, 3, 1, 2)).to(DEVICE, dtype=torch.float)
-                target = Variable(data['depth']).to(DEVICE, dtype=torch.float).unsqueeze(1)
-                mask = data['mask'].to(DEVICE)
+                inp, target, mask = prepare_var(data)
                 out = model(inp)
                 mre_loss, rmse_loss, l1_loss = compute_metrics(out * mask, target * mask)
                 mre.append(mre)
