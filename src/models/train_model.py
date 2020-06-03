@@ -38,23 +38,34 @@ def prepare_var(data):
     return inp, target, mask
 
 
-def train_on_batch(data, model, criterion):
+def train_on_batch(data, model, criterion, batch_idx):
     inp, target, mask = prepare_var(data)
     out = model(inp)
-    loss = criterion(out * mask, target * mask)
+    out = out * mask
+    target = target * mask
+    loss = criterion(out, target)
+    if batch_idx % 100 == 0:
+        for pred, truth in zip(out, target):
+            plot_sample(pred[0, :, :].cpu().detach().numpy(),
+                        truth[0, :, :].cpu().detach().numpy(),
+                        fig_save_path, batch_idx, "train")
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
     return loss.item()
 
 
-def evaluate_on_batch(data, model, criterion, fig_save_path, mode="validate"):
+def evaluate_on_batch(data, model, criterion, fig_save_path, batch_idx):
     inp, target, mask = prepare_var(data)
     out = model(inp)
-    loss = criterion(out * mask, target * mask)
+    out = out * mask
+    target = target * mask
+    loss = criterion(out, target)
     if batch_idx % 10 == 0:
         for pred, truth in zip(out, target):
-            plot_sample(pred[0, :, :], truth[0, :, :], fig_save_path, batch_idx, mode)
+            plot_sample(pred[0, :, :].cpu(),
+                        truth[0, :, :].cpu(),
+                        fig_save_path, batch_idx, "validate")
     return loss.item()
 
 
@@ -96,25 +107,28 @@ if __name__ == '__main__':
 
     criterion = nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=4e-5)
-    scheduler = MultiplicativeLR(optimizer, lr_lambda=0.95)
+    lmbda = lambda epoch: 0.95
+    scheduler = MultiplicativeLR(optimizer, lr_lambda=lmbda)
     if TRAIN:
         print("\nTRAINING STARTING...")
-        for i in range(num_epochs):
-            print(f'====== Epoch {i} ======')
+        for epoch in range(num_epochs):
+            print(f'====== Epoch {epoch} ======')
             train_loss, valid_loss = [], []
             model.train()
             for batch_idx, data in enumerate(train_loader):
-                loss = train_on_batch(data, model, criterion)
-                print(f'Epoch {i}, batch_idx {batch_idx} train loss: {loss}')
+                loss = train_on_batch(data, model, criterion, batch_idx)
+                print(f'Epoch {epoch}, batch_idx {batch_idx} train loss: {loss}')
                 train_loss.append(loss)
 
             model.eval()
             with torch.no_grad():
                 for batch_idx, data in enumerate(val_loader):
-                    loss = evaluate_on_batch(data, model, criterion, fig_save_path)
-                    print(f'Epoch {i}, batch_idx {batch_idx} val loss: {loss}')
+                    loss = evaluate_on_batch(data, model, criterion, fig_save_path, batch_idx)
+                    print(f'Epoch {epoch}, batch_idx {batch_idx} val loss: {loss}')
                     valid_loss.append(loss)
             scheduler.step()
+            plot_metrics(metrics=[train_loss, valid_loss], names=["Train losses", "Validation losses"],
+                         save_path=fig_save_path, mode=f"train_val_{epoch}")
         torch.save(model.state_dict(), SAVING_PATH)
 
     if TEST:
@@ -129,5 +143,10 @@ if __name__ == '__main__':
                 mre.append(mre)
                 rmse.append(rmse)
                 l1.append(l1_loss)
-        plot_metrics([mre, rmse, l1], ["MRE", "RMSE", "L1"], fig_save_path)
+                if batch_idx % 100 == 0:
+                    for pred, truth in zip(out, target):
+                        plot_sample(pred[0, :, :].cpu(),
+                                    truth[0, :, :].cpu(),
+                                    fig_save_path, batch_idx, "eval")
+        plot_metrics([mre, rmse, l1], ["MRE", "RMSE", "L1"], fig_save_path, mode="eval")
         print(f'Mean MRE Loss: {np.mean(mre)}, RMSE Loss: {np.mean(rmse)}, L1 Loss: {np.mean(l1)}')
