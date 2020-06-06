@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
-from src.data.transforms import rebin, minmax, minmax_over_nonzero
+from src.data.transforms import rebin, minmax_over_nonzero
 
 
 class DatadirParser():
