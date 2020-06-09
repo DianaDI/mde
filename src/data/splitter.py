@@ -10,6 +10,7 @@ from tqdm import tqdm
 from os.path import basename
 import multiprocessing
 from joblib import Parallel, delayed
+from src.data import IMG_WIDTH
 
 log = True
 
@@ -83,7 +84,7 @@ if __name__ == "__main__":
     xoffset, w1, h1, yoffset, w2, h2 = raster.GetGeoTransform()
 
     # parallel sliding square window
-    window = 512 + 1
+    window = IMG_WIDTH + 1
     step = window
 
     num_cores = multiprocessing.cpu_count()

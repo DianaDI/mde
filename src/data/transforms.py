@@ -4,13 +4,17 @@ import numpy as np
 def minmax(arr):
     arr_min = np.min(arr)
     arr_max = np.max(arr)
-    return (arr - arr_min) / (arr_max - arr_min)
+    return minmax_custom(arr, arr_min, arr_max)
+
+
+def minmax_custom(arr, min, max):
+    return (arr - min) / (max - min)
 
 
 def minmax_over_nonzero(arr):
     arr_min = np.min(arr[np.nonzero(arr)])
     arr_max = np.max(arr)
-    return (arr - arr_min) / (arr_max - arr_min)
+    return minmax_custom(arr, arr_min, arr_max)
 
 
 def rebin(arr, new_shape):

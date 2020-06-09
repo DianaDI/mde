@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import os
 from torch.autograd import Variable
 import torch.nn as nn
 from torchvision import transforms
@@ -8,15 +9,22 @@ from torch.optim.lr_scheduler import MultiplicativeLR
 from src.data.make_dataset import DatadirParser, TrainValTestSplitter, BeraDataset
 from src.models.mde_net import MDENet
 from src.models.util import plot_metrics, plot_sample
+from src.models import TRAIN, TEST, \
+    CHK_MODEL_PATH, LOAD_FROM_CHK, \
+    MODEL_DIR, FIG_SAVE_PATH, FULL_MODEL_SAVING_PATH, \
+    NORMALIZE, RANDOM_SEED, LR, NUM_EPOCHS, BATCH_SIZE, NUM_WORKERS, LR_DECAY, GPU_ID, PLOT_SAMPLE
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", 1)
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", GPU_ID)
 loader = transforms.Compose([transforms.ToTensor()])
 
 
 def mean_relative_error(output, target):
-    # todo fix bug with nan after division
-    loss = torch.mean(torch.abs(output - target) / target)
-    return 0
+    # todo might not be valid with normalization
+    target_no_zeros = torch.where(target > 0, target, target + 0.001)
+    loss = torch.mean(torch.abs(output - target) / torch.abs(target_no_zeros))
+    if loss.item() > 10:
+        print(loss.item())
+    return loss.item()
 
 
 def root_mean_squared_error(output, target):
@@ -71,36 +79,27 @@ def evaluate_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx):
 
 
 if __name__ == '__main__':
+    try:
+        os.makedirs(FIG_SAVE_PATH)
+        os.makedirs(MODEL_DIR)
+    except OSError as e:
+        print(e)
+        pass
 
-    TRAIN = True
-    TEST = True
-    FULL_MODEL_SAVING_PATH = "fpn_model_run2.pth"
-    CHK_MODEL_PATH = "run0/model_chkp_epoch_4.pth"  # specify checkpoint path
-    LOAD_FROM_CHK = False
-    MODEL_DIR = "run2"
-    FIG_SAVE_PATH = f"/mnt/data/davletshina/mde/reports/figures/{MODEL_DIR}"
-
-    random_seed = 42
-    # set number of cpu cores for images processing
-    num_workers = 8
-    loader_init_fn = lambda worker_id: np.random.seed(random_seed + worker_id)
-
-    lr = 0.0001
-    batch_size = 12
-    num_epochs = 7
+    loader_init_fn = lambda worker_id: np.random.seed(RANDOM_SEED + worker_id)
 
     # dataset
     parser = DatadirParser()
     images, depths = parser.get_parsed()
-    splitter = TrainValTestSplitter(images, depths, random_seed=random_seed)
+    splitter = TrainValTestSplitter(images, depths, random_seed=RANDOM_SEED)
 
-    train_ds = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth)
-    validation_ds = BeraDataset(img_filenames=splitter.data_val.image, depth_filenames=splitter.data_val.depth)
-    test_ds = BeraDataset(img_filenames=splitter.data_test.image, depth_filenames=splitter.data_test.depth)
+    train_ds = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth, normalise=NORMALIZE)
+    validation_ds = BeraDataset(img_filenames=splitter.data_val.image, depth_filenames=splitter.data_val.depth, normalise=NORMALIZE)
+    test_ds = BeraDataset(img_filenames=splitter.data_test.image, depth_filenames=splitter.data_test.depth, normalise=NORMALIZE)
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = DataLoader(validation_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+    val_loader = DataLoader(validation_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+    test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 
     # network initialization
     model = MDENet().to(DEVICE)
@@ -110,8 +109,8 @@ if __name__ == '__main__':
     print(f'\nNum of parameters: {total_params}. Trainable parameters: {train_total_params}')
 
     criterion = nn.L1Loss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=4e-5)
-    lmbda = lambda epoch: 0.75
+    optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=4e-5)
+    lmbda = lambda epoch: LR_DECAY
     scheduler = MultiplicativeLR(optimizer, lr_lambda=lmbda)
     total_train_loss = []
     total_val_loss = []
@@ -126,7 +125,7 @@ if __name__ == '__main__':
             loss = checkpoint['loss']
 
         start_epoch = 0 if not LOAD_FROM_CHK else chkp_epoch
-        for epoch in range(start_epoch, num_epochs):
+        for epoch in range(start_epoch, NUM_EPOCHS):
             print(f'====== Epoch {epoch} ======')
             train_loss, valid_loss = [], []
             loss = 0
@@ -175,9 +174,9 @@ if __name__ == '__main__':
                 mre.append(mre_loss)
                 rmse.append(rmse_loss)
                 l1.append(l1_loss)
-                if batch_idx % 100 == 0:
+                if PLOT_SAMPLE & (batch_idx % 100) == 0:
                     for pred, truth in zip(out, target):
                         plot_sample(pred[0, :, :].cpu(),
                                     truth[0, :, :].cpu(),
                                     FIG_SAVE_PATH, 0, batch_idx, "eval")
-        print(f'Mean RMSE Loss: {np.mean(rmse)}, L1 Loss: {np.mean(l1)}')
+        print(f'Mean MRE Loss: {np.mean(mre)}, Mean RMSE Loss: {np.mean(rmse)}, L1 Loss: {np.mean(l1)}')
