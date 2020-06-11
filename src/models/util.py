@@ -1,10 +1,10 @@
 from matplotlib import pyplot as plt
 import matplotlib
-from src.models import NORMALIZE
-from src.data.transforms import minmax, minmax_over_nonzero
 import numpy as np
+import json
 
 matplotlib.use('Agg')
+plt.rcParams.update({'font.size': 7})
 
 
 def plot_metrics(metrics, names, save_path, mode):
@@ -23,16 +23,20 @@ def plot_metrics(metrics, names, save_path, mode):
 
 def plot_sample(output, target, save_path, epoch, batch_idx, mode):
     fig, axes = plt.subplots(nrows=1, ncols=2)
-    # normalize image between its own bounds for better visualisation
-    output = minmax_over_nonzero(output)
-    target = minmax_over_nonzero(target)
-    mask = (target >= 0).astype(int)
-    output = np.multiply(output, mask)
-    target = np.multiply(target, mask)
-    im1 = axes.flat[0].imshow(output)
-    im2 = axes.flat[1].imshow(target)
-    fig.colorbar(im1, ax=axes.ravel().tolist())
-    fig.colorbar(im2, ax=axes.ravel().tolist())
+    imgs = [output, target]
+    for col in range(2):
+        ax = axes[col]
+        min = np.min(imgs[col][np.nonzero(imgs[col])])
+        max = np.max(imgs[col])
+        im = ax.imshow(imgs[col], vmin=min, vmax=max)
+        fig.colorbar(im, ax=ax)
     plt.savefig(f'{save_path}/{mode}_sample_{epoch}_{batch_idx}.png', dpi=300)
     plt.clf()
     plt.close('all')
+
+
+def save_run_params(params, name):
+    res = json.dumps(params)
+    f = open(f"{name}.json", "w")
+    f.write(res)
+    f.close()

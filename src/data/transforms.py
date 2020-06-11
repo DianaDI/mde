@@ -17,6 +17,10 @@ def minmax_over_nonzero(arr):
     return minmax_custom(arr, arr_min, arr_max)
 
 
+def minmax_reverse(arr, min, max):
+    return arr * (max - min) + min
+
+
 def rebin(arr, new_shape):
     """Rebin 2D array arr to shape new_shape by averaging over nonzero elements."""
     shape = (new_shape[0], arr.shape[0] // new_shape[0],

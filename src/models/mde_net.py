@@ -13,9 +13,9 @@ def predict(in_planes, out_planes):
     )
 
 
-class MDENet(nn.Module):
+class FPNNet(nn.Module):
     def __init__(self, pretrained=True):
-        super(MDENet, self).__init__()
+        super(FPNNet, self).__init__()
 
         resnet = resnet101(pretrained=pretrained)
 
