@@ -81,10 +81,11 @@ class TrainValTestSplitter:
 
 
 class BeraDataset(Dataset):
-    def __init__(self, img_filenames, depth_filenames, normalise=True):
+    def __init__(self, img_filenames, depth_filenames, normalise=True, normalise_type='local'):
         self.img_filenames = img_filenames
         self.depth_filenames = depth_filenames
         self.normalize = normalise
+        self.normalize_type = normalise_type
 
     def __len__(self):
         return len(self.depth_filenames)
@@ -95,9 +96,15 @@ class BeraDataset(Dataset):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         label = np.load(self.depth_filenames[index], allow_pickle=True)
         label = rebin(label, (128, 128))
+        ## convert to kilometers -- smaller numbers are better for NN convergence
+        #label = label / 1000
+        range = np.array([np.min(label[np.nonzero(label)]), np.max(label[np.nonzero(label)])])
         if self.normalize:
-            label = minmax_custom(label, MIN_DEPTH, MAX_DEPTH)
+            if self.normalize_type == 'local':
+                label = minmax_over_nonzero(label)
+            else:
+                label = minmax_custom(label, MIN_DEPTH, MAX_DEPTH)
             mask = (label >= 0).astype(int)  # 0 is smallest after minmax
         else:
             mask = (label > 0).astype(int)
-        return {'image': image, 'depth': label, 'mask': mask}
+        return {'image': image, 'depth': label, 'mask': mask, 'range': range}

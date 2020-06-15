@@ -26,9 +26,9 @@ def plot_sample(output, target, save_path, epoch, batch_idx, mode):
     imgs = [output, target]
     for col in range(2):
         ax = axes[col]
-        min = np.min(imgs[col][np.nonzero(imgs[col])])
-        max = np.max(imgs[col])
-        im = ax.imshow(imgs[col], vmin=min, vmax=max)
+        # min = np.min(imgs[col][np.nonzero(imgs[col])])
+        # max = np.max(imgs[col])
+        im = ax.imshow(imgs[col]) #vmin=min, vmax=max)
         fig.colorbar(im, ax=ax)
     plt.savefig(f'{save_path}/{mode}_sample_{epoch}_{batch_idx}.png', dpi=300)
     plt.clf()

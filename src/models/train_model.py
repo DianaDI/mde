@@ -45,7 +45,8 @@ def prepare_var(data):
     inp = Variable(data['image'].permute(0, 3, 1, 2)).to(DEVICE, dtype=torch.float)
     target = Variable(data['depth']).to(DEVICE, dtype=torch.float).unsqueeze(1)
     mask = data['mask'].to(DEVICE).unsqueeze(1)
-    return inp, target, mask
+    range = Variable(data['range']).to(DEVICE)
+    return inp, target, mask, range
 
 
 def log_sample(cur_batch, plot_every, out, target, path, epoch, mode):
@@ -56,11 +57,17 @@ def log_sample(cur_batch, plot_every, out, target, path, epoch, mode):
 
 
 def train_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx):
-    inp, target, mask = prepare_var(data)
-    out = model(inp)
+    inp, target, mask, range = prepare_var(data)
+    out, out_range = model(inp), 0
     out_masked = out * mask
     target_masked = target * mask
     loss = criterion(out_masked, target_masked)
+    # loss_range = criterion(out_range, range)
+    # print(f'DM loss: {loss.item()}, Range loss: {loss_range.item()}')
+    # loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
+    # for param in model.parameters():
+    #     loss_reg = loss_reg + param.norm(2)
+    # loss = loss + loss_range + 0.0001 * loss_reg
     if params['plot_sample']:
         log_sample(batch_idx, 10, out_masked, target_masked, fig_save_path, epoch, "train")
     optimizer.zero_grad()
@@ -70,11 +77,13 @@ def train_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx):
 
 
 def evaluate_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx):
-    inp, target, mask = prepare_var(data)
-    out = model(inp)
+    inp, target, mask, range = prepare_var(data)
+    out, out_range = model(inp), 0
     out_masked = out * mask
     target_masked = target * mask
     loss = criterion(out_masked, target_masked)
+    # loss_range = criterion(out_range, range)
+    # loss = loss + loss_range
     if params['plot_sample']:
         log_sample(batch_idx, 10, out_masked, target_masked, fig_save_path, epoch, "validate")
     return loss.item()
@@ -94,6 +103,7 @@ if __name__ == '__main__':
     batch_size = params['batch_size']
     num_workers = params['num_workers']
     normalise = params['normalise']
+    normalise_type = params['normalise_type']
 
     loader_init_fn = lambda worker_id: np.random.seed(random_seed + worker_id)
 
@@ -102,9 +112,12 @@ if __name__ == '__main__':
     images, depths = parser.get_parsed()
     splitter = TrainValTestSplitter(images, depths, random_seed=random_seed)
 
-    train_ds = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth, normalise=normalise)
-    validation_ds = BeraDataset(img_filenames=splitter.data_val.image, depth_filenames=splitter.data_val.depth, normalise=normalise)
-    test_ds = BeraDataset(img_filenames=splitter.data_test.image, depth_filenames=splitter.data_test.depth, normalise=normalise)
+    train_ds = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth,
+                           normalise=normalise, normalise_type=normalise_type)
+    validation_ds = BeraDataset(img_filenames=splitter.data_val.image, depth_filenames=splitter.data_val.depth,
+                                normalise=normalise, normalise_type=normalise_type)
+    test_ds = BeraDataset(img_filenames=splitter.data_test.image, depth_filenames=splitter.data_test.depth,
+                          normalise=normalise, normalise_type=normalise_type)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(validation_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
@@ -173,8 +186,8 @@ if __name__ == '__main__':
         mre, rmse, l1 = [], [], []
         with torch.no_grad():
             for batch_idx, data in enumerate(test_loader):
-                inp, target, mask = prepare_var(data)
-                out = model(inp)
+                inp, target, mask, range = prepare_var(data)
+                out, out_range = model(inp), 0
                 out_masked = out * mask
                 target_masked = target * mask
                 mre_loss, rmse_loss, l1_loss = compute_metrics(out_masked, target_masked)

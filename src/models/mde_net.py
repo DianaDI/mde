@@ -4,13 +4,31 @@ from torchvision.models.resnet import resnet101
 
 
 # ============================= Feature Pyramid Network ================================= #
-# source: https://github.com/wolverinn/Depth-Estimation-PyTorch
+# based on source: https://github.com/wolverinn/Depth-Estimation-PyTorch
+
+class Print(nn.Module):
+    def forward(self, x):
+        print(x.size())
+        return x
+
+
+class Flatten(nn.Module):
+    def forward(self, x):
+        return x.reshape(x.size()[0], -1)
+
 
 def predict(in_planes, out_planes):
     return nn.Sequential(
         nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=1, padding=1),
-        nn.ReLU(),
+        nn.ReLU()
     )
+
+
+def predict_range(inp, out):
+    return nn.Sequential(nn.Linear(inp, out),
+                         nn.ReLU(),
+                         nn.Linear(out, 2)
+                         )
 
 
 class FPNNet(nn.Module):
@@ -36,11 +54,15 @@ class FPNNet(nn.Module):
         # Smooth layers
         self.smooth1 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
         self.smooth2 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.smooth3 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+        self.smooth3 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1)
 
         # Depth prediction
-        self.predict1 = predict(256, 64)
+        self.predict1 = predict(128, 64)
         self.predict2 = predict(64, 1)
+        self.predict_range = predict_range(128 * 128 * 128, 128)
+
+        self.print = Print()
+        self.flatten = Flatten()
 
     def _upsample_add(self, x, y):
         '''Upsample and add two feature maps.
@@ -79,4 +101,7 @@ class FPNNet(nn.Module):
         p3 = self.smooth2(p3)  # 256 channels, 1/8 size
         p2 = self._upsample_add(p3, self.latlayer3(c2))  # 256, 1/4 size
         p2 = self.smooth3(p2)  # 256 channels, 1/4 size
-        return self.predict2(self.predict1(p2))  # depth; 1/2 size, mode = "L"
+        # p3 = self.print(p2)
+        # flat = self.flatten(p2)
+        # range = self.predict_range(flat)
+        return self.predict2(self.predict1(p2))  # , range  # depth; 1/2 size, mode = "L"
