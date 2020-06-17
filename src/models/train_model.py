@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import MultiplicativeLR
 from src.data.make_dataset import DatadirParser, TrainValTestSplitter, BeraDataset
 from src.models.mde_net import FPNNet
-from src.models.util import plot_metrics, plot_sample, save_run_params
+from src.models.util import plot_metrics, plot_sample, save_dict
 from src.models import MODEL_DIR, FIG_SAVE_PATH, FULL_MODEL_SAVING_PATH, RUN_CNT
 from src.models.run_params import COMMON_PARAMS, MODEL_SPECIFIC_PARAMS
 
@@ -56,36 +56,45 @@ def log_sample(cur_batch, plot_every, out, target, path, epoch, mode):
                     path, epoch, cur_batch, mode)
 
 
+def save_model_chk(epoch, model, optimizer, path):
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict()
+    }, path)
+
+
 def train_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx):
     inp, target, mask, range = prepare_var(data)
-    out, out_range = model(inp), 0
+    out, out_range = model(inp)
     out_masked = out * mask
     target_masked = target * mask
     loss = criterion(out_masked, target_masked)
-    # loss_range = criterion(out_range, range)
-    # print(f'DM loss: {loss.item()}, Range loss: {loss_range.item()}')
-    # loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
-    # for param in model.parameters():
-    #     loss_reg = loss_reg + param.norm(2)
-    # loss = loss + loss_range + 0.0001 * loss_reg
+    loss_range = criterion(out_range, range)
+    if batch_idx % 10 == 0:
+        print(f'DM loss: {loss.item()}, Range loss: {loss_range.item()}')
+    loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
+    for param in model.parameters():
+        loss_reg = loss_reg + param.norm(2)
+    loss = loss + loss_range + 0.0001 * loss_reg
     if params['plot_sample']:
-        log_sample(batch_idx, 10, out_masked, target_masked, fig_save_path, epoch, "train")
+        log_sample(batch_idx, 100, out_masked, target_masked, fig_save_path, epoch, "train")
     optimizer.zero_grad()
-    loss.backward()
+    loss.sum().backward()
     optimizer.step()
     return loss.item()
 
 
 def evaluate_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx):
     inp, target, mask, range = prepare_var(data)
-    out, out_range = model(inp), 0
+    out, out_range = model(inp)
     out_masked = out * mask
     target_masked = target * mask
     loss = criterion(out_masked, target_masked)
-    # loss_range = criterion(out_range, range)
-    # loss = loss + loss_range
+    loss_range = criterion(out_range, range)
+    loss = loss + loss_range
     if params['plot_sample']:
-        log_sample(batch_idx, 10, out_masked, target_masked, fig_save_path, epoch, "validate")
+        log_sample(batch_idx, 100, out_masked, target_masked, fig_save_path, epoch, "validate")
     return loss.item()
 
 
@@ -97,7 +106,7 @@ if __name__ == '__main__':
         print(e)
         pass
 
-    save_run_params(params, f'{MODEL_DIR}/{model_class.__name__}_run{RUN_CNT}')
+    save_dict(params, f'{MODEL_DIR}/{model_class.__name__}_run{RUN_CNT}')
 
     random_seed = params['random_seed']
     batch_size = params['batch_size']
@@ -143,24 +152,16 @@ if __name__ == '__main__':
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             first_epoch = checkpoint['epoch']
-            loss = checkpoint['loss']
 
         for epoch in range(first_epoch, params['num_epochs']):
             print(f'====== Epoch {epoch} ======')
             train_loss, valid_loss = [], []
-            loss = 0
             model.train()
             for batch_idx, data in enumerate(train_loader):
                 loss = train_on_batch(data, model, criterion, FIG_SAVE_PATH, epoch, batch_idx)
                 print(f'Epoch {epoch}, batch_idx {batch_idx} train loss: {loss}')
                 train_loss.append(loss)
-
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'loss': loss,
-            }, f'{MODEL_DIR}/model_chkp_epoch_{epoch}.pth')
+            save_model_chk(epoch, model, optimizer, f'{MODEL_DIR}/model_chkp_epoch_{epoch}.pth')
 
             model.eval()
             with torch.no_grad():
@@ -183,17 +184,27 @@ if __name__ == '__main__':
         print("\nEVALUATION STARTING...")
         model.load_state_dict(torch.load(FULL_MODEL_SAVING_PATH))
         model.eval()
-        mre, rmse, l1 = [], [], []
+        mre, rmse, l1, l1_range = [], [], [], []
         with torch.no_grad():
             for batch_idx, data in enumerate(test_loader):
                 inp, target, mask, range = prepare_var(data)
-                out, out_range = model(inp), 0
+                out, out_range = model(inp)
                 out_masked = out * mask
                 target_masked = target * mask
                 mre_loss, rmse_loss, l1_loss = compute_metrics(out_masked, target_masked)
                 mre.append(mre_loss)
                 rmse.append(rmse_loss)
                 l1.append(l1_loss)
+                l1_range.append(nn.L1Loss().forward(out_range, range).item())
                 if params['plot_sample']:
                     log_sample(batch_idx, 100, out_masked, target_masked, FIG_SAVE_PATH, 0, "eval")
-        print(f'Mean MRE Loss: {np.mean(mre)}, Mean RMSE Loss: {np.mean(rmse)}, L1 Loss: {np.mean(l1)}')
+        # print(f'Mean MRE Loss: {np.mean(mre)}, Mean RMSE Loss: {np.mean(rmse)}, L1 Loss: {np.mean(l1)}, L1 loss range: {np.mean(l1_range)}')
+        results = {
+            "Mean MRE Loss": np.mean(mre),
+            "Mean RMSE Loss": np.mean(rmse),
+            "Mean L1 Loss": np.mean(l1),
+            "Mean L1 loss Range": np.mean(l1_range)
+        }
+        for key in results:
+            print(f'{key}: {results[key]}')
+        save_dict(results, f'{MODEL_DIR}/{model_class.__name__}_run{RUN_CNT}_eval_results')

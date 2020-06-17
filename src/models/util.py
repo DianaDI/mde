@@ -1,6 +1,5 @@
 from matplotlib import pyplot as plt
 import matplotlib
-import numpy as np
 import json
 
 matplotlib.use('Agg')
@@ -35,7 +34,7 @@ def plot_sample(output, target, save_path, epoch, batch_idx, mode):
     plt.close('all')
 
 
-def save_run_params(params, name):
+def save_dict(params, name):
     res = json.dumps(params)
     f = open(f"{name}.json", "w")
     f.write(res)

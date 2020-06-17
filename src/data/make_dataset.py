@@ -95,10 +95,11 @@ class BeraDataset(Dataset):
         image = cv2.imread(self.img_filenames[index])
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         label = np.load(self.depth_filenames[index], allow_pickle=True)
-        label = rebin(label, (128, 128))
         ## convert to kilometers -- smaller numbers are better for NN convergence
-        #label = label / 1000
+        label = label / 1000
+        label = rebin(label, (128, 128))
         range = np.array([np.min(label[np.nonzero(label)]), np.max(label[np.nonzero(label)])])
+        range = range - (MIN_DEPTH/1000)
         if self.normalize:
             if self.normalize_type == 'local':
                 label = minmax_over_nonzero(label)

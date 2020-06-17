@@ -101,7 +101,7 @@ class FPNNet(nn.Module):
         p3 = self.smooth2(p3)  # 256 channels, 1/8 size
         p2 = self._upsample_add(p3, self.latlayer3(c2))  # 256, 1/4 size
         p2 = self.smooth3(p2)  # 256 channels, 1/4 size
-        # p3 = self.print(p2)
-        # flat = self.flatten(p2)
-        # range = self.predict_range(flat)
-        return self.predict2(self.predict1(p2))  # , range  # depth; 1/2 size, mode = "L"
+        #p3 = self.print(p2)
+        flat = self.flatten(p2)
+        range = self.predict_range(flat)
+        return self.predict2(self.predict1(p2)), range  # depth; 1/2 size, mode = "L"
