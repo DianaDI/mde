@@ -30,7 +30,7 @@ class DatadirParser():
 
 
 class TrainValTestSplitter:
-    def __init__(self, images, depth, test_size=0.2, val=True, random_seed=42):
+    def __init__(self, images, depth, test_size=0.1, val=True, random_seed=42):
         """
         Train-validation-test splitter, stores all the filenames
         :param path_to_data: path to images

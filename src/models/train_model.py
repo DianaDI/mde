@@ -73,12 +73,12 @@ def train_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx):
     loss_range = criterion(out_range, range)
     if batch_idx % 10 == 0:
         print(f'DM loss: {loss.item()}, Range loss: {loss_range.item()}')
-    loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
-    for param in model.parameters():
-        loss_reg = loss_reg + param.norm(2)
-    loss = loss + loss_range + 0.0001 * loss_reg
+    # loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
+    # for param in model.parameters():
+    #     loss_reg = loss_reg + param.norm(2)
+    loss = 0.1 * loss + loss_range # + 1e-10 * loss_reg
     if params['plot_sample']:
-        log_sample(batch_idx, 100, out_masked, target_masked, fig_save_path, epoch, "train")
+        log_sample(batch_idx, 200, out_masked, target_masked, fig_save_path, epoch, "train")
     optimizer.zero_grad()
     loss.sum().backward()
     optimizer.step()
@@ -92,7 +92,7 @@ def evaluate_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx):
     target_masked = target * mask
     loss = criterion(out_masked, target_masked)
     loss_range = criterion(out_range, range)
-    loss = loss + loss_range
+    loss = 0.1 * loss + loss_range
     if params['plot_sample']:
         log_sample(batch_idx, 100, out_masked, target_masked, fig_save_path, epoch, "validate")
     return loss.item()
@@ -119,7 +119,7 @@ if __name__ == '__main__':
     # dataset
     parser = DatadirParser()
     images, depths = parser.get_parsed()
-    splitter = TrainValTestSplitter(images, depths, random_seed=random_seed)
+    splitter = TrainValTestSplitter(images, depths, random_seed=random_seed, test_size=params['test_size'])
 
     train_ds = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth,
                            normalise=normalise, normalise_type=normalise_type)
@@ -134,7 +134,7 @@ if __name__ == '__main__':
 
     # network initialization
     model = FPNNet().to(DEVICE)
-    # print(model)
+    print(model)
     total_params = sum(p.numel() for p in model.parameters())
     train_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'\nNum of parameters: {total_params}. Trainable parameters: {train_total_params}')
@@ -192,15 +192,14 @@ if __name__ == '__main__':
                 out_masked = out * mask
                 target_masked = target * mask
                 mre_loss, rmse_loss, l1_loss = compute_metrics(out_masked, target_masked)
-                mre.append(mre_loss)
+                #mre.append(mre_loss)
                 rmse.append(rmse_loss)
                 l1.append(l1_loss)
                 l1_range.append(nn.L1Loss().forward(out_range, range).item())
                 if params['plot_sample']:
                     log_sample(batch_idx, 100, out_masked, target_masked, FIG_SAVE_PATH, 0, "eval")
-        # print(f'Mean MRE Loss: {np.mean(mre)}, Mean RMSE Loss: {np.mean(rmse)}, L1 Loss: {np.mean(l1)}, L1 loss range: {np.mean(l1_range)}')
         results = {
-            "Mean MRE Loss": np.mean(mre),
+            #"Mean MRE Loss": np.mean(mre),
             "Mean RMSE Loss": np.mean(rmse),
             "Mean L1 Loss": np.mean(l1),
             "Mean L1 loss Range": np.mean(l1_range)
