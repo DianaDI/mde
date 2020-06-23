@@ -64,7 +64,7 @@ def save_model_chk(epoch, model, optimizer, path):
     }, path)
 
 
-def train_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx):
+def train_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx, alpha=1, beta=1):
     inp, target, mask, range = prepare_var(data)
     out, out_range = model(inp)
     out_masked = out * mask
@@ -76,23 +76,23 @@ def train_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx):
     # loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
     # for param in model.parameters():
     #     loss_reg = loss_reg + param.norm(2)
-    loss = 0.1 * loss + loss_range # + 1e-10 * loss_reg
+    loss = alpha * loss + beta * loss_range  # + 1e-10 * loss_reg
     if params['plot_sample']:
-        log_sample(batch_idx, 200, out_masked, target_masked, fig_save_path, epoch, "train")
+        log_sample(batch_idx, 500, out_masked, target_masked, fig_save_path, epoch, "train")
     optimizer.zero_grad()
     loss.sum().backward()
     optimizer.step()
     return loss.item()
 
 
-def evaluate_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx):
+def evaluate_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx, alpha=1, beta=1):
     inp, target, mask, range = prepare_var(data)
     out, out_range = model(inp)
     out_masked = out * mask
     target_masked = target * mask
     loss = criterion(out_masked, target_masked)
     loss_range = criterion(out_range, range)
-    loss = 0.1 * loss + loss_range
+    loss = alpha * loss + beta * loss_range
     if params['plot_sample']:
         log_sample(batch_idx, 100, out_masked, target_masked, fig_save_path, epoch, "validate")
     return loss.item()
@@ -161,7 +161,8 @@ if __name__ == '__main__':
                 loss = train_on_batch(data, model, criterion, FIG_SAVE_PATH, epoch, batch_idx)
                 print(f'Epoch {epoch}, batch_idx {batch_idx} train loss: {loss}')
                 train_loss.append(loss)
-            save_model_chk(epoch, model, optimizer, f'{MODEL_DIR}/model_chkp_epoch_{epoch}.pth')
+            if params['save_chk']:
+                save_model_chk(epoch, model, optimizer, f'{MODEL_DIR}/model_chkp_epoch_{epoch}.pth')
 
             model.eval()
             with torch.no_grad():
@@ -192,14 +193,14 @@ if __name__ == '__main__':
                 out_masked = out * mask
                 target_masked = target * mask
                 mre_loss, rmse_loss, l1_loss = compute_metrics(out_masked, target_masked)
-                #mre.append(mre_loss)
+                # mre.append(mre_loss)
                 rmse.append(rmse_loss)
                 l1.append(l1_loss)
                 l1_range.append(nn.L1Loss().forward(out_range, range).item())
                 if params['plot_sample']:
-                    log_sample(batch_idx, 100, out_masked, target_masked, FIG_SAVE_PATH, 0, "eval")
+                    log_sample(batch_idx, 50, out_masked, target_masked, FIG_SAVE_PATH, 0, "eval")
         results = {
-            #"Mean MRE Loss": np.mean(mre),
+            # "Mean MRE Loss": np.mean(mre),
             "Mean RMSE Loss": np.mean(rmse),
             "Mean L1 Loss": np.mean(l1),
             "Mean L1 loss Range": np.mean(l1_range)
