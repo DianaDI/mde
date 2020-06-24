@@ -7,7 +7,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import MultiplicativeLR
 from src.data.make_dataset import DatadirParser, TrainValTestSplitter, BeraDataset
-from src.models.mde_net import FPNNet
+from src.models.mde_net import FPNNet, GradLoss, NormalLoss
 from src.models.util import plot_metrics, plot_sample, save_dict
 from src.models import MODEL_DIR, FIG_SAVE_PATH, FULL_MODEL_SAVING_PATH, RUN_CNT
 from src.models.run_params import COMMON_PARAMS, MODEL_SPECIFIC_PARAMS
@@ -64,19 +64,23 @@ def save_model_chk(epoch, model, optimizer, path):
     }, path)
 
 
-def train_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx, alpha=1, beta=1):
+def train_on_batch(data, model, criterion, criterion_img, criterion_norm, fig_save_path, epoch, batch_idx, alpha=1, beta=1):
     inp, target, mask, range = prepare_var(data)
     out, out_range = model(inp)
     out_masked = out * mask
     target_masked = target * mask
-    loss = criterion(out_masked, target_masked)
+    imgrad_true = imgrad_yx(target_masked)
+    imgrad_out = imgrad_yx(out_masked)
+    l1_loss = criterion(out_masked, target_masked)
+    loss_grad = criterion_img(imgrad_out, imgrad_true)
+    loss_normal = criterion_norm(imgrad_out, imgrad_true)
     loss_range = criterion(out_range, range)
     if batch_idx % 10 == 0:
-        print(f'DM loss: {loss.item()}, Range loss: {loss_range.item()}')
+        print(f'DM loss: {loss_grad.item()}, Range loss: {loss_range.item()}')
     # loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
     # for param in model.parameters():
     #     loss_reg = loss_reg + param.norm(2)
-    loss = alpha * loss + beta * loss_range  # + 1e-10 * loss_reg
+    loss = l1_loss + alpha * loss_grad + beta * loss_range  # + loss_normal # + 1e-10 * loss_reg
     if params['plot_sample']:
         log_sample(batch_idx, 500, out_masked, target_masked, fig_save_path, epoch, "train")
     optimizer.zero_grad()
@@ -85,17 +89,44 @@ def train_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx, alph
     return loss.item()
 
 
-def evaluate_on_batch(data, model, criterion, fig_save_path, epoch, batch_idx, alpha=1, beta=1):
+def evaluate_on_batch(data, model, criterion, criterion_img, criterion_norm, fig_save_path, epoch, batch_idx, alpha=1, beta=1):
     inp, target, mask, range = prepare_var(data)
     out, out_range = model(inp)
     out_masked = out * mask
     target_masked = target * mask
-    loss = criterion(out_masked, target_masked)
+    imgrad_true = imgrad_yx(target_masked)
+    imgrad_out = imgrad_yx(out_masked)
+    l1_loss = criterion(out_masked, target_masked)
+    loss_grad = criterion_img(imgrad_out, imgrad_true)
+    loss_normal = criterion_norm(imgrad_out, imgrad_true)
     loss_range = criterion(out_range, range)
-    loss = alpha * loss + beta * loss_range
+    loss = l1_loss + alpha * loss_grad + beta * loss_range #+ loss_normal
     if params['plot_sample']:
         log_sample(batch_idx, 100, out_masked, target_masked, fig_save_path, epoch, "validate")
     return loss.item()
+
+
+def imgrad(img):
+    img = torch.mean(img, 1, True)
+    # grad x
+    fx = np.array([[1, 0, -1], [2, 0, -2], [1, 0, -1]])
+    conv1 = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1, bias=False)
+    weight = torch.from_numpy(fx).float().unsqueeze(0).unsqueeze(0).to(DEVICE)
+    conv1.weight = nn.Parameter(weight)
+    grad_x = conv1(img)
+    # grad y
+    fy = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
+    conv2 = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1, bias=False)
+    weight = torch.from_numpy(fy).float().unsqueeze(0).unsqueeze(0).to(DEVICE)
+    conv2.weight = nn.Parameter(weight)
+    grad_y = conv2(img)
+    return grad_y, grad_x
+
+
+def imgrad_yx(img):
+    N, C, _, _ = img.size()
+    grad_y, grad_x = imgrad(img)
+    return torch.cat((grad_y.view(N, C, -1), grad_x.view(N, C, -1)), dim=1)
 
 
 if __name__ == '__main__':
@@ -139,7 +170,9 @@ if __name__ == '__main__':
     train_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f'\nNum of parameters: {total_params}. Trainable parameters: {train_total_params}')
 
-    criterion = nn.L1Loss()
+    l1_criterion = nn.L1Loss()
+    grad_criterion = GradLoss()
+    normal_criterion = NormalLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'], weight_decay=4e-5)
     lmbda = lambda epoch: params['lr_decay']
     scheduler = MultiplicativeLR(optimizer, lr_lambda=lmbda)
@@ -158,7 +191,7 @@ if __name__ == '__main__':
             train_loss, valid_loss = [], []
             model.train()
             for batch_idx, data in enumerate(train_loader):
-                loss = train_on_batch(data, model, criterion, FIG_SAVE_PATH, epoch, batch_idx)
+                loss = train_on_batch(data, model, l1_criterion, grad_criterion, normal_criterion, FIG_SAVE_PATH, epoch, batch_idx)
                 print(f'Epoch {epoch}, batch_idx {batch_idx} train loss: {loss}')
                 train_loss.append(loss)
             if params['save_chk']:
@@ -167,7 +200,7 @@ if __name__ == '__main__':
             model.eval()
             with torch.no_grad():
                 for batch_idx, data in enumerate(val_loader):
-                    loss = evaluate_on_batch(data, model, criterion, FIG_SAVE_PATH, epoch, batch_idx)
+                    loss = evaluate_on_batch(data, model, l1_criterion, grad_criterion, normal_criterion, FIG_SAVE_PATH, epoch, batch_idx)
                     print(f'Epoch {epoch}, batch_idx {batch_idx} val loss: {loss}')
                     valid_loss.append(loss)
 
