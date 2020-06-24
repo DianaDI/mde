@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import MultiplicativeLR
 from src.data.make_dataset import DatadirParser, TrainValTestSplitter, BeraDataset
 from src.models.mde_net import FPNNet, GradLoss, NormalLoss
-from src.models.util import plot_metrics, plot_sample, save_dict
+from src.models.util import plot_metrics, plot_sample, save_dict, imgrad_yx
 from src.models import MODEL_DIR, FIG_SAVE_PATH, FULL_MODEL_SAVING_PATH, RUN_CNT
 from src.models.run_params import COMMON_PARAMS, MODEL_SPECIFIC_PARAMS
 
@@ -64,23 +64,28 @@ def save_model_chk(epoch, model, optimizer, path):
     }, path)
 
 
-def train_on_batch(data, model, criterion, criterion_img, criterion_norm, fig_save_path, epoch, batch_idx, alpha=1, beta=1):
+def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_idx):
     inp, target, mask, range = prepare_var(data)
     out, out_range = model(inp)
     out_masked = out * mask
     target_masked = target * mask
-    imgrad_true = imgrad_yx(target_masked)
-    imgrad_out = imgrad_yx(out_masked)
-    l1_loss = criterion(out_masked, target_masked)
+    imgrad_true = imgrad_yx(target_masked, DEVICE)
+    imgrad_out = imgrad_yx(out_masked, DEVICE)
+    l1_loss = l1_criterion(out_masked, target_masked)
     loss_grad = criterion_img(imgrad_out, imgrad_true)
     loss_normal = criterion_norm(imgrad_out, imgrad_true)
-    loss_range = criterion(out_range, range)
-    if batch_idx % 10 == 0:
-        print(f'DM loss: {loss_grad.item()}, Range loss: {loss_range.item()}')
+    loss_range = l1_criterion(out_range, range)
+    total_loss = l1_loss + loss_grad + loss_range + loss_normal
     # loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
     # for param in model.parameters():
     #     loss_reg = loss_reg + param.norm(2)
-    loss = l1_loss + alpha * loss_grad + beta * loss_range  # + loss_normal # + 1e-10 * loss_reg
+    if batch_idx % 10 == 0:
+        print(f'DM l1-loss: {l1_loss.item()}, Range l1-loss: {loss_range.item()}')
+    return total_loss, out_masked, target_masked
+
+
+def train_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, fig_save_path, epoch, batch_idx):
+    loss, out_masked, target_masked = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_idx)
     if params['plot_sample']:
         log_sample(batch_idx, 500, out_masked, target_masked, fig_save_path, epoch, "train")
     optimizer.zero_grad()
@@ -89,44 +94,11 @@ def train_on_batch(data, model, criterion, criterion_img, criterion_norm, fig_sa
     return loss.item()
 
 
-def evaluate_on_batch(data, model, criterion, criterion_img, criterion_norm, fig_save_path, epoch, batch_idx, alpha=1, beta=1):
-    inp, target, mask, range = prepare_var(data)
-    out, out_range = model(inp)
-    out_masked = out * mask
-    target_masked = target * mask
-    imgrad_true = imgrad_yx(target_masked)
-    imgrad_out = imgrad_yx(out_masked)
-    l1_loss = criterion(out_masked, target_masked)
-    loss_grad = criterion_img(imgrad_out, imgrad_true)
-    loss_normal = criterion_norm(imgrad_out, imgrad_true)
-    loss_range = criterion(out_range, range)
-    loss = l1_loss + alpha * loss_grad + beta * loss_range #+ loss_normal
+def evaluate_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, fig_save_path, epoch, batch_idx):
+    loss, out_masked, target_masked = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_idx)
     if params['plot_sample']:
         log_sample(batch_idx, 100, out_masked, target_masked, fig_save_path, epoch, "validate")
     return loss.item()
-
-
-def imgrad(img):
-    img = torch.mean(img, 1, True)
-    # grad x
-    fx = np.array([[1, 0, -1], [2, 0, -2], [1, 0, -1]])
-    conv1 = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1, bias=False)
-    weight = torch.from_numpy(fx).float().unsqueeze(0).unsqueeze(0).to(DEVICE)
-    conv1.weight = nn.Parameter(weight)
-    grad_x = conv1(img)
-    # grad y
-    fy = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
-    conv2 = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1, bias=False)
-    weight = torch.from_numpy(fy).float().unsqueeze(0).unsqueeze(0).to(DEVICE)
-    conv2.weight = nn.Parameter(weight)
-    grad_y = conv2(img)
-    return grad_y, grad_x
-
-
-def imgrad_yx(img):
-    N, C, _, _ = img.size()
-    grad_y, grad_x = imgrad(img)
-    return torch.cat((grad_y.view(N, C, -1), grad_x.view(N, C, -1)), dim=1)
 
 
 if __name__ == '__main__':
