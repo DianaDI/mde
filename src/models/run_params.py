@@ -7,7 +7,7 @@ COMMON_PARAMS = {
     'normalise_type': 'local', # 'global', 'local'
     'random_seed': 123,
     'num_workers': 10,  # set number of cpu cores for images processing
-    'gpu_id': 0,
+    'gpu_id': 1,
     'plot_sample': True,
     'test_size': 0.1,
     'save_chk': False
@@ -15,9 +15,9 @@ COMMON_PARAMS = {
 
 MODEL_SPECIFIC_PARAMS = {
     'FPNNet': {
-        'lr': 0.00001,
+        'lr': 0.000001,
         'lr_decay': 0.95,
         'batch_size': 6,
-        'num_epochs': 5
+        'num_epochs': 6
     }
 }
