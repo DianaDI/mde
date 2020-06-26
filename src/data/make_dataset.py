@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
-from src.data.transforms import rebin, minmax_over_nonzero, minmax_custom
+from src.data.transforms import rebin, minmax_over_nonzero, minmax_custom, interpolate_on_missing
 from src.data import MIN_DEPTH, MAX_DEPTH
 
 
@@ -81,11 +81,12 @@ class TrainValTestSplitter:
 
 
 class BeraDataset(Dataset):
-    def __init__(self, img_filenames, depth_filenames, normalise=True, normalise_type='local'):
+    def __init__(self, img_filenames, depth_filenames, normalise=True, normalise_type='local', interpolate=False):
         self.img_filenames = img_filenames
         self.depth_filenames = depth_filenames
         self.normalize = normalise
         self.normalize_type = normalise_type
+        self.interpolate = interpolate
 
     def __len__(self):
         return len(self.depth_filenames)
@@ -99,7 +100,7 @@ class BeraDataset(Dataset):
         label = label / 1000
         label = rebin(label, (128, 128))
         range = np.array([np.min(label[np.nonzero(label)]), np.max(label[np.nonzero(label)])])
-        range = range - (MIN_DEPTH/1000)
+        range = range - (MIN_DEPTH / 1000)
         if self.normalize:
             if self.normalize_type == 'local':
                 label = minmax_over_nonzero(label)
@@ -108,4 +109,7 @@ class BeraDataset(Dataset):
             mask = (label >= 0).astype(int)  # 0 is smallest after minmax
         else:
             mask = (label > 0).astype(int)
+        if self.interpolate:
+            if np.min(mask) == 0:
+                label = interpolate_on_missing(label * mask)
         return {'image': image, 'depth': label, 'mask': mask, 'range': range}
