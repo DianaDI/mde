@@ -67,8 +67,8 @@ def save_model_chk(epoch, model, optimizer, path):
 def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_idx, mode="train"):
     inp, target, mask, range = prepare_var(data)
     out, out_range = model(inp)
-    # out = out * mask
-    # target = target * mask
+    out = out * mask
+    target = target * mask
     imgrad_true = imgrad_yx(target, DEVICE)
     imgrad_out = imgrad_yx(out, DEVICE)
     l1_loss = l1_criterion(out, target)
@@ -82,7 +82,10 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_id
     #         loss_reg = loss_reg + param.norm(2)
     #     total_loss = total_loss + 1e-20 * loss_reg
     if batch_idx % 10 == 0:
-        print(f'DM l1-loss: {l1_loss.item()}, Range l1-loss: {loss_range.item()}')
+        print(f'DM l1-loss: {l1_loss.item()}, '
+              f'Loss Grad {loss_grad.item()},  '
+              f'Loss Normal {loss_normal.item()}, '
+              f'Range l1-loss: {loss_range.item()}')
     return total_loss, out, target
 
 
@@ -127,11 +130,11 @@ if __name__ == '__main__':
     splitter = TrainValTestSplitter(images, depths, random_seed=random_seed, test_size=params['test_size'])
 
     train_ds = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth,
-                           normalise=normalise, normalise_type=normalise_type, interpolate=True)
+                           normalise=normalise, normalise_type=normalise_type, interpolate=False)
     validation_ds = BeraDataset(img_filenames=splitter.data_val.image, depth_filenames=splitter.data_val.depth,
-                                normalise=normalise, normalise_type=normalise_type, interpolate=True)
+                                normalise=normalise, normalise_type=normalise_type, interpolate=False)
     test_ds = BeraDataset(img_filenames=splitter.data_test.image, depth_filenames=splitter.data_test.depth,
-                          normalise=normalise, normalise_type=normalise_type, interpolate=True)
+                          normalise=normalise, normalise_type=normalise_type, interpolate=False)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(validation_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
