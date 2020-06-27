@@ -75,7 +75,7 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_id
     loss_grad = criterion_img(imgrad_out, imgrad_true)
     loss_normal = criterion_norm(imgrad_out, imgrad_true)
     loss_range = l1_criterion(out_range, range)
-    total_loss = l1_loss + loss_grad + loss_range + 0.5 * loss_normal
+    total_loss = l1_loss + loss_grad + loss_range + 0.01 * loss_normal
     # if mode == "train":
     #     loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
     #     for param in model.parameters():
