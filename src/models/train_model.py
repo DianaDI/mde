@@ -64,18 +64,19 @@ def save_model_chk(epoch, model, optimizer, path):
     }, path)
 
 
-def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_idx, mode="train"):
+def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_idx):
     inp, target, mask, range = prepare_var(data)
     out, out_range = model(inp)
-    out = out * mask
-    target = target * mask
+    if not interpolate:
+        out = out * mask
+        target = target * mask
     imgrad_true = imgrad_yx(target, DEVICE)
     imgrad_out = imgrad_yx(out, DEVICE)
     l1_loss = l1_criterion(out, target)
     loss_grad = criterion_img(imgrad_out, imgrad_true)
     loss_normal = criterion_norm(imgrad_out, imgrad_true)
     loss_range = l1_criterion(out_range, range)
-    total_loss = l1_loss + loss_grad + loss_range + 0.01 * loss_normal
+    total_loss = l1_loss + loss_grad + 2 * loss_range + 0.5 * loss_normal
     # if mode == "train":
     #     loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
     #     for param in model.parameters():
@@ -100,7 +101,7 @@ def train_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, fig
 
 
 def evaluate_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, fig_save_path, epoch, batch_idx):
-    loss, out, target = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_idx, mode="eval")
+    loss, out, target = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_idx)
     if params['plot_sample']:
         log_sample(batch_idx, 100, out, target, fig_save_path, epoch, "validate")
     return loss.item()
@@ -121,6 +122,7 @@ if __name__ == '__main__':
     num_workers = params['num_workers']
     normalise = params['normalise']
     normalise_type = params['normalise_type']
+    interpolate = params['interpolate']
 
     loader_init_fn = lambda worker_id: np.random.seed(random_seed + worker_id)
 
@@ -130,11 +132,11 @@ if __name__ == '__main__':
     splitter = TrainValTestSplitter(images, depths, random_seed=random_seed, test_size=params['test_size'])
 
     train_ds = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth,
-                           normalise=normalise, normalise_type=normalise_type, interpolate=False)
+                           normalise=normalise, normalise_type=normalise_type, interpolate=interpolate)
     validation_ds = BeraDataset(img_filenames=splitter.data_val.image, depth_filenames=splitter.data_val.depth,
-                                normalise=normalise, normalise_type=normalise_type, interpolate=False)
+                                normalise=normalise, normalise_type=normalise_type, interpolate=interpolate)
     test_ds = BeraDataset(img_filenames=splitter.data_test.image, depth_filenames=splitter.data_test.depth,
-                          normalise=normalise, normalise_type=normalise_type, interpolate=False)
+                          normalise=normalise, normalise_type=normalise_type, interpolate=interpolate)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(validation_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
@@ -150,6 +152,7 @@ if __name__ == '__main__':
     l1_criterion = nn.L1Loss()
     grad_criterion = GradLoss()
     normal_criterion = NormalLoss()
+
     optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'], weight_decay=4e-5)
     lmbda = lambda epoch: params['lr_decay']
     scheduler = MultiplicativeLR(optimizer, lr_lambda=lmbda)
@@ -185,10 +188,14 @@ if __name__ == '__main__':
             scheduler.step()
             total_train_loss = np.concatenate((total_train_loss, train_loss))
             total_val_loss = np.concatenate((total_val_loss, valid_loss))
-            plot_metrics(metrics=[train_loss, valid_loss], names=["Train losses", "Validation losses"],
-                         save_path=FIG_SAVE_PATH, mode=f"train_val_{epoch}")
-        plot_metrics(metrics=[total_train_loss, total_val_loss], names=["Total Train losses", "Total Validation losses"],
-                     save_path=FIG_SAVE_PATH, mode=f"train_val")
+            plot_metrics(metrics=[train_loss, valid_loss],
+                         names=["Train losses", "Validation losses"],
+                         save_path=FIG_SAVE_PATH,
+                         mode=f"train_val_{epoch}")
+        plot_metrics(metrics=[total_train_loss, total_val_loss],
+                     names=["Total Train losses", "Total Validation losses"],
+                     save_path=FIG_SAVE_PATH,
+                     mode=f"train_val")
         torch.save(model.state_dict(), FULL_MODEL_SAVING_PATH)
 
     if params['test']:
