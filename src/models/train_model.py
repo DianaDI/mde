@@ -11,6 +11,7 @@ from src.models.mde_net import FPNNet, GradLoss, NormalLoss
 from src.models.util import plot_metrics, plot_sample, save_dict, imgrad_yx
 from src.models import MODEL_DIR, FIG_SAVE_PATH, FULL_MODEL_SAVING_PATH, RUN_CNT
 from src.models.run_params import COMMON_PARAMS, MODEL_SPECIFIC_PARAMS
+from src.models.ssim import SSIM
 
 # set model type
 model_class = FPNNet
@@ -64,7 +65,7 @@ def save_model_chk(epoch, model, optimizer, path):
     }, path)
 
 
-def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_idx):
+def calc_loss(data, model, l1_criterion, criterion_img, criterion3, batch_idx):
     inp, target, mask, range = prepare_var(data)
     out, out_range = model(inp)
     if not interpolate:
@@ -74,9 +75,11 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_id
     imgrad_out = imgrad_yx(out, DEVICE)
     l1_loss = l1_criterion(out, target)
     loss_grad = criterion_img(imgrad_out, imgrad_true)
-    loss_normal = criterion_norm(imgrad_out, imgrad_true)
+    loss_normal = 0 #criterion3(imgrad_out, imgrad_true)
+    loss_ssim = criterion3(out, target)
     loss_range = l1_criterion(out_range, range)
-    total_loss = l1_loss + loss_grad + 2 * loss_range + 0.5 * loss_normal
+    #total_loss = l1_loss + loss_grad + 2 * loss_range + 0.5 * loss_normal
+    total_loss = l1_loss + loss_grad + 2 * loss_range + loss_ssim
     # if mode == "train":
     #     loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
     #     for param in model.parameters():
@@ -85,7 +88,8 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_id
     if batch_idx % 10 == 0:
         print(f'DM l1-loss: {l1_loss.item()}, '
               f'Loss Grad {loss_grad.item()},  '
-              f'Loss Normal {loss_normal.item()}, '
+              #f'Loss Normal {loss_normal.item()}, '
+              f'Loss SSIM {loss_ssim.item()}, '
               f'Range l1-loss: {loss_range.item()}')
     return total_loss, out, target
 
@@ -152,6 +156,7 @@ if __name__ == '__main__':
     l1_criterion = nn.L1Loss()
     grad_criterion = GradLoss()
     normal_criterion = NormalLoss()
+    ssim = SSIM()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'], weight_decay=4e-5)
     lmbda = lambda epoch: params['lr_decay']
@@ -171,7 +176,7 @@ if __name__ == '__main__':
             train_loss, valid_loss = [], []
             model.train()
             for batch_idx, data in enumerate(train_loader):
-                loss = train_on_batch(data, model, l1_criterion, grad_criterion, normal_criterion, FIG_SAVE_PATH, epoch, batch_idx)
+                loss = train_on_batch(data, model, l1_criterion, grad_criterion, ssim, FIG_SAVE_PATH, epoch, batch_idx)
                 print(f'Epoch {epoch}, batch_idx {batch_idx} train loss: {loss}')
                 train_loss.append(loss)
             if params['save_chk']:
@@ -180,7 +185,7 @@ if __name__ == '__main__':
             model.eval()
             with torch.no_grad():
                 for batch_idx, data in enumerate(val_loader):
-                    loss = evaluate_on_batch(data, model, l1_criterion, grad_criterion, normal_criterion, FIG_SAVE_PATH, epoch, batch_idx)
+                    loss = evaluate_on_batch(data, model, l1_criterion, grad_criterion, ssim, FIG_SAVE_PATH, epoch, batch_idx)
                     print(f'Epoch {epoch}, batch_idx {batch_idx} val loss: {loss}')
                     valid_loss.append(loss)
 

@@ -44,7 +44,5 @@ def interpolate_on_missing(arr, equal_to=0, method='nearest'):
     y1 = yy[~array.mask]
     newarr = array[~array.mask]
     res = interpolate.griddata((x1, y1), newarr.ravel(), (xx, yy), method=method, fill_value=0)
-    if np.min(res) < 0:
-        mask = (res >= 0).astype(int)
-        res = res * mask
+    res = np.clip(res, 0, 1)
     return res
