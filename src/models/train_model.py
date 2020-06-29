@@ -79,7 +79,7 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion3, batch_idx):
     loss_ssim = criterion3(out, target)
     loss_range = l1_criterion(out_range, range)
     #total_loss = l1_loss + loss_grad + 2 * loss_range + 0.5 * loss_normal
-    total_loss = l1_loss + loss_grad + 2 * loss_range + loss_ssim
+    total_loss = l1_loss + loss_grad + 2 * loss_range + 0.5 * loss_ssim
     # if mode == "train":
     #     loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
     #     for param in model.parameters():
@@ -99,7 +99,7 @@ def train_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, fig
     if params['plot_sample']:
         log_sample(batch_idx, 500, out, target, fig_save_path, epoch, "train")
     optimizer.zero_grad()
-    loss.sum().backward()
+    loss.backward()
     optimizer.step()
     return loss.item()
 
