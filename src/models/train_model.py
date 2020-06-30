@@ -57,6 +57,7 @@ def log_sample(cur_batch, plot_every, out, target, path, epoch, mode):
                     path, epoch, cur_batch, mode)
 
 
+
 def save_model_chk(epoch, model, optimizer, path):
     torch.save({
         'epoch': epoch,
@@ -79,7 +80,7 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion3, batch_idx):
     loss_ssim = criterion3(out, target)
     loss_range = l1_criterion(out_range, range)
     #total_loss = l1_loss + loss_grad + 2 * loss_range + 0.5 * loss_normal
-    total_loss = l1_loss + loss_grad + 2 * loss_range + 0.5 * loss_ssim
+    total_loss = l1_loss + loss_grad + 3 * loss_range + loss_ssim
     # if mode == "train":
     #     loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
     #     for param in model.parameters():
