@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import MultiplicativeLR
 from src.data.make_dataset import DatadirParser, TrainValTestSplitter, BeraDataset
 from src.models.mde_net import FPNNet, GradLoss, NormalLoss
-from src.models.util import plot_metrics, plot_sample, save_dict, imgrad_yx
+from src.models.util import plot_metrics, plot_sample, save_dict, imgrad_yx, save_dm
 from src.models import MODEL_DIR, FIG_SAVE_PATH, FULL_MODEL_SAVING_PATH, RUN_CNT
 from src.models.run_params import COMMON_PARAMS, MODEL_SPECIFIC_PARAMS
 from src.models.ssim import SSIM
@@ -66,7 +66,7 @@ def save_model_chk(epoch, model, optimizer, path):
     }, path)
 
 
-def calc_loss(data, model, l1_criterion, criterion_img, criterion3, batch_idx):
+def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim, batch_idx):
     inp, target, mask, range = prepare_var(data)
     out, out_range = model(inp)
     if not interpolate:
@@ -76,11 +76,11 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion3, batch_idx):
     imgrad_out = imgrad_yx(out, DEVICE)
     l1_loss = l1_criterion(out, target)
     loss_grad = criterion_img(imgrad_out, imgrad_true)
-    loss_normal = 0 #criterion3(imgrad_out, imgrad_true)
-    loss_ssim = criterion3(out, target)
+    loss_normal = criterion_norm(imgrad_out, imgrad_true)
+    loss_ssim = criterion_ssim(out, target)
     loss_range = l1_criterion(out_range, range)
     #total_loss = l1_loss + loss_grad + 2 * loss_range + 0.5 * loss_normal
-    total_loss = l1_loss + 2 * loss_grad + 3 * loss_range + loss_ssim
+    total_loss = l1_loss + 2 * loss_grad + 3 * loss_range + loss_ssim + 0.5 * loss_normal
     # if mode == "train":
     #     loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
     #     for param in model.parameters():
@@ -95,8 +95,8 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion3, batch_idx):
     return total_loss, out, target
 
 
-def train_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, fig_save_path, epoch, batch_idx):
-    loss, out, target = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_idx)
+def train_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, ssim, fig_save_path, epoch, batch_idx):
+    loss, out, target = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, ssim, batch_idx)
     if params['plot_sample']:
         log_sample(batch_idx, 500, out, target, fig_save_path, epoch, "train")
     optimizer.zero_grad()
@@ -105,8 +105,8 @@ def train_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, fig
     return loss.item()
 
 
-def evaluate_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, fig_save_path, epoch, batch_idx):
-    loss, out, target = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, batch_idx)
+def evaluate_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, ssim, fig_save_path, epoch, batch_idx):
+    loss, out, target = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, ssim, batch_idx)
     if params['plot_sample']:
         log_sample(batch_idx, 100, out, target, fig_save_path, epoch, "validate")
     return loss.item()
@@ -177,7 +177,12 @@ if __name__ == '__main__':
             train_loss, valid_loss = [], []
             model.train()
             for batch_idx, data in enumerate(train_loader):
-                loss = train_on_batch(data, model, l1_criterion, grad_criterion, ssim, FIG_SAVE_PATH, epoch, batch_idx)
+                loss = train_on_batch(data=data,
+                                      model=model,
+                                      l1_criterion=l1_criterion,
+                                      criterion_img=grad_criterion, criterion_norm=normal_criterion, ssim=ssim,
+                                      fig_save_path=FIG_SAVE_PATH,
+                                      epoch=epoch, batch_idx=batch_idx)
                 print(f'Epoch {epoch}, batch_idx {batch_idx} train loss: {loss}')
                 train_loss.append(loss)
             if params['save_chk']:
@@ -186,7 +191,7 @@ if __name__ == '__main__':
             model.eval()
             with torch.no_grad():
                 for batch_idx, data in enumerate(val_loader):
-                    loss = evaluate_on_batch(data, model, l1_criterion, grad_criterion, ssim, FIG_SAVE_PATH, epoch, batch_idx)
+                    loss = evaluate_on_batch(data, model, l1_criterion, grad_criterion, normal_criterion, ssim, FIG_SAVE_PATH, epoch, batch_idx)
                     print(f'Epoch {epoch}, batch_idx {batch_idx} val loss: {loss}')
                     valid_loss.append(loss)
 
@@ -222,6 +227,7 @@ if __name__ == '__main__':
                 l1_range.append(nn.L1Loss().forward(out_range, range).item())
                 if params['plot_sample']:
                     log_sample(batch_idx, 50, out_masked, target_masked, FIG_SAVE_PATH, 0, "eval")
+                    save_dm(out[0][0, :, :].cpu().detach().numpy(), target[0][0, :, :].cpu().detach().numpy(), FIG_SAVE_PATH, batch_idx)
         results = {
             # "Mean MRE Loss": np.mean(mre),
             "Mean RMSE Loss": np.mean(rmse),

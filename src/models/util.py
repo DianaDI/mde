@@ -37,6 +37,12 @@ def plot_sample(output, target, save_path, epoch, batch_idx, mode):
     plt.close('all')
 
 
+def save_dm(output, target, save_path, batch_idx, mode="eval"):
+    # output, target are supposed to be numpy arrays
+    output.dump(f'{save_path}/{mode}_dm_output_{batch_idx}.dmp')
+    target.dump(f'{save_path}/{mode}_dm_target_{batch_idx}.dmp')
+
+
 def save_dict(params, name):
     res = json.dumps(params)
     f = open(f"{name}.json", "w")
