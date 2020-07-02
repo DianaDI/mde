@@ -11,10 +11,8 @@ from src.data import MIN_DEPTH, MAX_DEPTH
 class DatadirParser():
     def __init__(self, data_dir="/mnt/data/davletshina/datasets/Bera_MDE"):
         self.data_dir = f'{data_dir}/splits2'
-        self.pc_name_prefixes = ["KirbyLeafOff2017PointCloudEntireSite", "KirbyLeafOn2017PointCloudEntireSite"]
         self.img_name_prefixes = ["KirbyLeafOff2017RGBNEntireSite", "KirbyLeafOn2017RGBNEntireSite"]
         self.depth_dir = f'{data_dir}/depth_maps2/*'
-        self.pc_list = self.get_files(self.data_dir, self.pc_name_prefixes)
         self.img_list = self.get_files(self.data_dir, self.img_name_prefixes)
         self.depth_list = sorted(glob(self.depth_dir))
 
