@@ -9,6 +9,7 @@ img_common_dir = "/mnt/data/davletshina/datasets/Bera_MDE/splits2"
 dm_dir = "/mnt/data/davletshina/datasets/Bera_MDE/depth_maps2"
 movedir = "/mnt/data/davletshina/datasets/Bera_MDE/sparse"
 
+ratio_factor = 0.2
 cnt = 0
 num_files = len(glob(dm_dir + "/*"))
 
@@ -17,7 +18,7 @@ for file in tqdm(glob(dm_dir + "/*")):
     dm = np.load(file, allow_pickle=True)
     dm = rebin(dm, (128, 128))
     zeros = np.sum((dm == 0).astype(int))
-    if zeros / dm.size > 0.2:
+    if zeros / dm.size > ratio_factor:
         cnt += 1
         img_dir = file_name.split('_')[0].replace("DM", "RGBN")
         img_name = file_name.replace("DM", "RGBN").replace("dmp", "tif")

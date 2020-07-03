@@ -79,8 +79,7 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterio
     loss_normal = criterion_norm(imgrad_out, imgrad_true)
     # loss_ssim = criterion_ssim(out, target)
     loss_range = l1_criterion(out_range, range)
-    # total_loss = l1_loss + loss_grad + 2 * loss_range + 0.5 * loss_normal
-    total_loss = l1_loss + 2 * loss_grad + 3 * loss_range + 0.5 * loss_normal
+    total_loss = l1_loss + loss_grad + 2 * loss_range + 0.5 * loss_normal
     # if mode == "train":
     #     loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
     #     for param in model.parameters():
@@ -231,7 +230,7 @@ if __name__ == '__main__':
                 l1_range.append(nn.L1Loss().forward(out_range, range).item())
                 if params['plot_sample']:
                     log_sample(batch_idx, 50, out, target, FIG_SAVE_PATH, "", "eval")
-                    if batch_idx % 100:
+                    if batch_idx % 100 == 0:
                         save_dm(out[0][0, :, :].cpu().detach().numpy(), target[0][0, :, :].cpu().detach().numpy(), FIG_SAVE_PATH, batch_idx)
         results = {
             # "Mean MRE Loss": np.mean(mre),
