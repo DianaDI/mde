@@ -68,7 +68,7 @@ def save_model_chk(epoch, model, optimizer, path):
 
 def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim, batch_idx):
     inp, target, mask, range = prepare_var(data)
-    out, out_range = model(inp)
+    out, out_range = model(inp), 0
     if not interpolate:
         out = out * mask
         target = target * mask
@@ -78,8 +78,8 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterio
     loss_grad = criterion_img(imgrad_out, imgrad_true)
     loss_normal = criterion_norm(imgrad_out, imgrad_true)
     # loss_ssim = criterion_ssim(out, target)
-    loss_range = l1_criterion(out_range, range)
-    total_loss = l1_loss + loss_grad + 2 * loss_range + 0.5 * loss_normal
+    # loss_range = l1_criterion(out_range, range)
+    total_loss = l1_loss + loss_grad + 0.5 * loss_normal
     # if mode == "train":
     #     loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
     #     for param in model.parameters():
@@ -88,9 +88,9 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterio
     if batch_idx % 10 == 0:
         print(f'DM l1-loss: {l1_loss.item()}, '
               f'Loss Grad {loss_grad.item()},  '
-              f'Loss Normal {loss_normal.item()}, '
+              f'Loss Normal {loss_normal.item()}')
               # f'Loss SSIM {loss_ssim.item()}, '
-              f'Range l1-loss: {loss_range.item()}')
+              # f'Range l1-loss: {loss_range.item()}')
     return total_loss, out, target
 
 
@@ -227,7 +227,7 @@ if __name__ == '__main__':
                 # mre.append(mre_loss)
                 rmse.append(rmse_loss)
                 l1.append(l1_loss)
-                l1_range.append(nn.L1Loss().forward(out_range, range).item())
+                #l1_range.append(nn.L1Loss().forward(out_range, range).item())
                 if params['plot_sample']:
                     log_sample(batch_idx, 50, out, target, FIG_SAVE_PATH, "", "eval")
                     if batch_idx % 100 == 0:
@@ -235,8 +235,8 @@ if __name__ == '__main__':
         results = {
             # "Mean MRE Loss": np.mean(mre),
             "Mean RMSE Loss": np.mean(rmse),
-            "Mean L1 Loss": np.mean(l1),
-            "Mean L1 loss Range": np.mean(l1_range)
+            "Mean L1 Loss": np.mean(l1)
+            #"Mean L1 loss Range": np.mean(l1_range)
         }
         for key in results:
             print(f'{key}: {results[key]}')
