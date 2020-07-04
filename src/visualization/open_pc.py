@@ -16,4 +16,3 @@ if __name__ == "__main__":
     mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
         size=10, origin=[min(xyz[:, 0]), min(xyz[:, 1]), min(xyz[:, 2])])
     o3d.visualization.draw_geometries([pcd, mesh_frame])
-    #o3d.visualization.draw_geometries([pcd])
