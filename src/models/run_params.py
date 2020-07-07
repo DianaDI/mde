@@ -7,6 +7,7 @@ COMMON_PARAMS = {
     'normalise_type': 'local',  # 'global', 'local'
     'random_seed': 123,
     'num_workers': 10,  # set number of cpu cores for images processing
+    'parallel': True,
     'gpu_id': 1,
     'plot_sample': True,
     'test_size': 0.1,

@@ -1,5 +1,7 @@
 import numpy as np
 from scipy import interpolate
+from matplotlib import pyplot as plt
+import cv2
 
 
 def minmax(arr):
@@ -46,3 +48,16 @@ def interpolate_on_missing(arr, equal_to=0, method='nearest'):
     res = interpolate.griddata((x1, y1), newarr.ravel(), (xx, yy), method=method, fill_value=0)
     res = np.clip(res, 0, 1)
     return res
+
+
+def get_edges(img, dim, visualise=False):
+    image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    image = cv2.resize(image, dim, interpolation=cv2.INTER_AREA)
+    edges = cv2.Canny(image, 100, 150)
+    if visualise:
+        plt.subplot(121), plt.imshow(image, cmap='gray')
+        plt.title('Original Image'), plt.xticks([]), plt.yticks([])
+        plt.subplot(122), plt.imshow(edges, cmap='gray')
+        plt.title('Edge Image'), plt.xticks([]), plt.yticks([])
+        plt.show()
+    return edges

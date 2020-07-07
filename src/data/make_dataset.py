@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
-from src.data.transforms import rebin, minmax_over_nonzero, minmax_custom, interpolate_on_missing
+from src.data.transforms import rebin, minmax_over_nonzero, minmax_custom, interpolate_on_missing, get_edges
 from src.data import MIN_DEPTH, MAX_DEPTH
 
 
@@ -85,6 +85,7 @@ class BeraDataset(Dataset):
         self.normalize = normalise
         self.normalize_type = normalise_type
         self.interpolate = interpolate
+        self.dm_dim = (128, 128)
 
     def __len__(self):
         return len(self.depth_filenames)
@@ -92,13 +93,13 @@ class BeraDataset(Dataset):
     def __getitem__(self, index):
         """Reads sample"""
         image = cv2.imread(self.img_filenames[index])
+        edges = get_edges(image, self.dm_dim) / 255
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         label = np.load(self.depth_filenames[index], allow_pickle=True)
-        ## convert to kilometers -- smaller numbers are better for NN convergence
-        label = label / 1000
-        label = rebin(label, (128, 128))
-        range = np.array([np.min(label[np.nonzero(label)]), np.max(label[np.nonzero(label)])])
-        range = range - (MIN_DEPTH / 1000)
+        #label = label / 1000 # convert to kilometers
+        label = rebin(label, self.dm_dim)
+        # range = np.array([np.min(label[np.nonzero(label)]), np.max(label[np.nonzero(label)])])
+        # range = range - (MIN_DEPTH / 1000)
         if self.normalize:
             if self.normalize_type == 'local':
                 label = minmax_over_nonzero(label)
@@ -110,4 +111,4 @@ class BeraDataset(Dataset):
         if self.interpolate:
             if np.min(mask) == 0:
                 label = interpolate_on_missing(label * mask)
-        return {'image': image, 'depth': label, 'mask': mask, 'range': range}
+        return {'image': image, 'depth': label, 'mask': mask, 'edges': edges}

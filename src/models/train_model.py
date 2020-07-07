@@ -7,7 +7,8 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import MultiplicativeLR
 from src.data.make_dataset import DatadirParser, TrainValTestSplitter, BeraDataset
-from src.models.mde_net import FPNNet, GradLoss, NormalLoss
+from src.models.mde_net import FPNNet
+from src.models.losses import GradLoss, NormalLoss, MaskedL1Loss
 from src.models.util import plot_metrics, plot_sample, save_dict, imgrad_yx, save_dm
 from src.models import MODEL_DIR, FIG_SAVE_PATH, FULL_MODEL_SAVING_PATH, RUN_CNT
 from src.models.run_params import COMMON_PARAMS, MODEL_SPECIFIC_PARAMS
@@ -18,8 +19,8 @@ model_class = FPNNet
 
 params = {**COMMON_PARAMS, **MODEL_SPECIFIC_PARAMS[model_class.__name__]}
 
-# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", params['gpu_id'])
-device = torch.device("cuda")
+device = torch.device("cuda") if params['parallel'] \
+    else torch.device("cuda" if torch.cuda.is_available() else "cpu", params['gpu_id'])
 loader = transforms.Compose([transforms.ToTensor()])
 
 
@@ -47,8 +48,8 @@ def prepare_var(data):
     inp = Variable(data['image'].permute(0, 3, 1, 2)).to(device, dtype=torch.float)
     target = Variable(data['depth']).to(device, dtype=torch.float).unsqueeze(1)
     mask = data['mask'].to(device).unsqueeze(1)
-    range = Variable(data['range']).to(device)
-    return inp, target, mask, range
+    edges = Variable(data['edges']).to(device).unsqueeze(1)
+    return inp, target, mask, edges
 
 
 def log_sample(cur_batch, plot_every, out, target, path, epoch, mode):
@@ -66,15 +67,20 @@ def save_model_chk(epoch, model, optimizer, path):
     }, path)
 
 
-def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim, batch_idx):
-    inp, target, mask, range = prepare_var(data)
-    out, out_range = model(inp), 0
+def get_prediction(data, model):
+    inp, target, mask, edges = prepare_var(data)
+    out = model(inp)
     if not interpolate:
         out = out * mask
         target = target * mask
+    return out, target, edges
+
+
+def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim, batch_idx):
+    out, target, edges = get_prediction(data, model)
     imgrad_true = imgrad_yx(target, device)
     imgrad_out = imgrad_yx(out, device)
-    l1_loss = l1_criterion(out, target)
+    l1_loss = l1_criterion(out, target, edges, device)
     loss_grad = criterion_img(imgrad_out, imgrad_true)
     loss_normal = criterion_norm(imgrad_out, imgrad_true)
     # loss_ssim = criterion_ssim(out, target)
@@ -87,10 +93,8 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterio
     #     total_loss = total_loss + 1e-20 * loss_reg
     if batch_idx % 10 == 0:
         print(f'DM l1-loss: {l1_loss.item()}, '
-              f'Loss Grad {loss_grad.item()},  '
-              f'Loss Normal {loss_normal.item()}')
-              # f'Loss SSIM {loss_ssim.item()}, '
-              # f'Range l1-loss: {loss_range.item()}')
+              f'Loss Grad: {loss_grad.item()},  '
+              f'Loss Normal: {loss_normal.item()}')
     return total_loss, out, target
 
 
@@ -149,15 +153,16 @@ if __name__ == '__main__':
     # network initialization
     model = FPNNet()
     print(model)
-    if torch.cuda.device_count() > 1:
-        print("Using", torch.cuda.device_count(), "GPUs")
-        model = nn.DataParallel(model, device_ids=[0, 1])
+    if params['parallel']:
+        if torch.cuda.device_count() > 1:
+            print("Using", torch.cuda.device_count(), "GPUs")
+            model = nn.DataParallel(model, device_ids=[0, 1])
     model.to(device)
 
     total_params = sum(p.numel() for p in model.parameters())
     print(f'\nNum of parameters: {total_params}')
 
-    l1_criterion = nn.L1Loss()
+    l1_criterion = MaskedL1Loss()
     grad_criterion = GradLoss()
     normal_criterion = NormalLoss()
     ssim = SSIM()
@@ -218,25 +223,17 @@ if __name__ == '__main__':
         mre, rmse, l1, l1_range = [], [], [], []
         with torch.no_grad():
             for batch_idx, data in enumerate(test_loader):
-                inp, target, mask, range = prepare_var(data)
-                out, out_range = model(inp)
-                if not interpolate:
-                    out = out * mask
-                    target = target * mask
+                out, target, _ = get_prediction(data, model)
                 mre_loss, rmse_loss, l1_loss = compute_metrics(out, target)
-                # mre.append(mre_loss)
                 rmse.append(rmse_loss)
                 l1.append(l1_loss)
-                #l1_range.append(nn.L1Loss().forward(out_range, range).item())
                 if params['plot_sample']:
                     log_sample(batch_idx, 50, out, target, FIG_SAVE_PATH, "", "eval")
                     if batch_idx % 100 == 0:
                         save_dm(out[0][0, :, :].cpu().detach().numpy(), target[0][0, :, :].cpu().detach().numpy(), FIG_SAVE_PATH, batch_idx)
         results = {
-            # "Mean MRE Loss": np.mean(mre),
             "Mean RMSE Loss": np.mean(rmse),
             "Mean L1 Loss": np.mean(l1)
-            #"Mean L1 loss Range": np.mean(l1_range)
         }
         for key in results:
             print(f'{key}: {results[key]}')
