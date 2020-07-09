@@ -51,9 +51,10 @@ def interpolate_on_missing(arr, equal_to=0, method='nearest'):
 
 
 def get_edges(img, dim, visualise=False):
+    # img = cv2.imread(img)
     image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     image = cv2.resize(image, dim, interpolation=cv2.INTER_AREA)
-    edges = cv2.Canny(image, 100, 150)
+    edges = cv2.Canny(image, 100, 200)
     if visualise:
         plt.subplot(121), plt.imshow(image, cmap='gray')
         plt.title('Original Image'), plt.xticks([]), plt.yticks([])
@@ -61,3 +62,6 @@ def get_edges(img, dim, visualise=False):
         plt.title('Edge Image'), plt.xticks([]), plt.yticks([])
         plt.show()
     return edges
+
+#get_edges("../../data/raw/KirbyLeafOn2017RGBNEntireSite_4617_0.tif", (128, 128), True)
+#get_edges("../../data/raw/KirbyLeafOff2017RGBNEntireSitePCCrop_42579_3078.tif", (128, 128), True)

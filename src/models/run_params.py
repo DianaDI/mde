@@ -20,6 +20,6 @@ MODEL_SPECIFIC_PARAMS = {
         'lr': 0.00001,
         'lr_decay': 0.95,
         'batch_size': 13,
-        'num_epochs': 10
+        'num_epochs': 5
     }
 }
