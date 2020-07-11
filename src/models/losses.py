@@ -32,4 +32,4 @@ class MaskedL1Loss(nn.Module):
         mask = (mask * factor).to(device, dtype=torch.float)
         ones = (torch.ones(mask.shape).to(device) * (1 - factor)).to(device)
         mask = torch.where(mask == 0, ones, mask).to(device, dtype=torch.float)
-        return torch.mean(torch.abs(target - pred * mask))
+        return torch.mean(torch.abs((target - pred) * mask))
