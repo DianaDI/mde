@@ -61,8 +61,8 @@ def process_row(y):
 
 if __name__ == "__main__":
     data_dir = f'/mnt/data/davletshina/datasets/Bera_MDE'
-    pc_path = f'{data_dir}/KirbyLeafOn2017PointCloudEntireSite.las'
-    tif_path = f'{data_dir}/KirbyLeafOn2017RGBNEntireSite.tif'
+    pc_path = f'{data_dir}/KirbyLeafOff2017PointCloudEntireSite.las'
+    tif_path = f'{data_dir}/KirbyLeafOff2017RGBNEntireSitePCCrop.tif'
     splits_dir = 'splits3'
 
     pc_name = basename(pc_path)[:-4]
@@ -88,7 +88,7 @@ if __name__ == "__main__":
     window = IMG_WIDTH + 1
     step = window
 
-    num_cores = multiprocessing.cpu_count()
+    num_cores = multiprocessing.cpu_count() - 2
     print(f'RUNNING ON {num_cores} CPUs')
     ys = tqdm(range(window - 1, height, step))
     Parallel(n_jobs=num_cores)(delayed(process_row)(y) for y in ys)

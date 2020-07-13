@@ -1,5 +1,5 @@
 # Common
-RUN_CNT = 61
+RUN_CNT = 62
 MODEL_DIR = f"run{RUN_CNT}"
 FULL_MODEL_SAVING_PATH = f"{MODEL_DIR}/fpn_model_run{RUN_CNT}.pth"
 # FULL_MODEL_SAVING_PATH = f"fpn_model.pth"
