@@ -12,7 +12,8 @@ COMMON_PARAMS = {
     'plot_sample': True,
     'test_size': 0.1,
     'save_chk': False,
-    'interpolate': True
+    'interpolate': True,
+    'edge_factor': 0.75
 }
 
 MODEL_SPECIFIC_PARAMS = {

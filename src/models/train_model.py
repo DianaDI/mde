@@ -80,7 +80,7 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterio
     out, target, edges = get_prediction(data, model)
     imgrad_true = imgrad_yx(target, device)
     imgrad_out = imgrad_yx(out, device)
-    l1_loss = l1_criterion(out, target, edges, device)
+    l1_loss = l1_criterion(out, target, edges, device, factor=params['edge_factor'])
     loss_grad = criterion_img(imgrad_out, imgrad_true)
     loss_normal = criterion_norm(imgrad_out, imgrad_true)
     # loss_ssim = criterion_ssim(out, target)
