@@ -93,11 +93,12 @@ class BeraDataset(Dataset):
     def __getitem__(self, index):
         """Reads sample"""
         image = cv2.imread(self.img_filenames[index])
-        edges = get_edges(image, self.dm_dim) / 255
+        image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+        image = cv2.flip(image, 1)
+        edges = get_edges(image, self.dm_dim)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        label = np.load(self.depth_filenames[index], allow_pickle=True)
-        #label = label / 1000 # convert to kilometers
-        label = rebin(label, self.dm_dim)
+        label_orig = np.load(self.depth_filenames[index], allow_pickle=True)
+        label = rebin(label_orig, self.dm_dim)
         # range = np.array([np.min(label[np.nonzero(label)]), np.max(label[np.nonzero(label)])])
         # range = range - (MIN_DEPTH / 1000)
         if self.normalize:

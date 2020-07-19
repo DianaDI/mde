@@ -50,11 +50,17 @@ def interpolate_on_missing(arr, equal_to=0, method='nearest'):
     return res
 
 
-def get_edges(img, dim, visualise=False):
-    img = cv2.imread(img)
-    image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+def get_edges(image, dim, treshold=0.7, visualise=False, read_from_file=False):
+    if read_from_file: image = cv2.imread(image)
+    image = cv2.GaussianBlur(image, ksize=(3, 3), sigmaX=0, sigmaY=0)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     image = cv2.resize(image, dim, interpolation=cv2.INTER_AREA)
-    edges = cv2.Canny(image, 100, 200)
+    edges = cv2.Laplacian(image, cv2.CV_16S, ksize=5)
+    cv2.convertScaleAbs(edges, edges)
+    edges = minmax(edges)
+    zeros = np.zeros(edges.shape)
+    ones = np.ones(edges.shape)
+    edges = np.where(edges < treshold, zeros, ones)
     if visualise:
         plt.subplot(121), plt.imshow(image, cmap='gray')
         plt.title('Original Image'), plt.xticks([]), plt.yticks([])
@@ -63,5 +69,5 @@ def get_edges(img, dim, visualise=False):
         plt.show()
     return edges
 
-#get_edges("../../data/raw/KirbyLeafOn2017RGBNEntireSite_4617_0.tif", (128, 128), True)
-get_edges("../../data/raw/KirbyLeafOff2017RGBNEntireSitePCCrop_42579_3078.tif", (128, 128), True)
+# get_edges("../../data/raw/KirbyLeafOn2017RGBNEntireSite_4617_0.tif", dim=(128, 128), visualise=True)
+# get_edges("../../data/raw/KirbyLeafOff2017RGBNEntireSitePCCrop_42579_3078.tif", dim=(128, 128), visualise=True)
