@@ -1,5 +1,6 @@
 from matplotlib import pyplot as plt
 import matplotlib
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import json
 import numpy as np
 import torch
@@ -23,15 +24,31 @@ def plot_metrics(metrics, names, save_path, mode):
             plt.close('all')
 
 
-def plot_sample(output, target, save_path, epoch, batch_idx, mode):
-    fig, axes = plt.subplots(nrows=1, ncols=2)
-    imgs = [output, target]
-    for col in range(2):
-        ax = axes[col]
-        # min = np.min(imgs[col][np.nonzero(imgs[col])])
-        # max = np.max(imgs[col])
-        im = ax.imshow(imgs[col])  # vmin=min, vmax=max)
-        fig.colorbar(im, ax=ax)
+def plot_sample(orig, output, target, edges, save_path, epoch, batch_idx, mode):
+    imgs = [orig, target, output, edges]
+    fig, axes = plt.subplots(nrows=2, ncols=2)
+
+    ax0 = axes[0][0]
+    ax0.title.set_text('Original img')
+    im0 = ax0.imshow(imgs[0])
+
+    ax1 = axes[1][0]
+    ax1.title.set_text('Target DM')
+    im1 = ax1.imshow(imgs[1], vmin=np.min(imgs[1]), vmax=np.max(imgs[1]))
+    cax1 = make_axes_locatable(ax1).append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im1, cax=cax1)
+
+    ax2 = axes[1][1]
+    ax2.title.set_text('Predicted DM')
+    im2 = ax2.imshow(imgs[2], vmin=np.min(imgs[2]), vmax=np.max(imgs[2]))
+    cax2 = make_axes_locatable(ax2).append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im2, cax=cax2)
+
+    ax3 = axes[0][1]
+    ax3.title.set_text('Edges')
+    im3 = ax3.imshow(imgs[3], vmin=np.min(imgs[3]), vmax=np.max(imgs[3]))
+
+    fig.tight_layout(pad=1.0)
     plt.savefig(f'{save_path}/{mode}_sample_{epoch}_{batch_idx}.png', dpi=300)
     plt.clf()
     plt.close('all')
