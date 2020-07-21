@@ -24,9 +24,9 @@ def plot_metrics(metrics, names, save_path, mode):
             plt.close('all')
 
 
-def plot_sample(orig, output, target, edges, save_path, epoch, batch_idx, mode):
-    imgs = [orig, target, output, edges]
-    fig, axes = plt.subplots(nrows=2, ncols=2)
+def plot_sample(orig, output, target, edges, pixel_loss, save_path, epoch, batch_idx, mode):
+    imgs = [orig, target, output, edges, pixel_loss]
+    fig, axes = plt.subplots(nrows=2, ncols=3)
 
     ax0 = axes[0][0]
     ax0.title.set_text('Original img')
@@ -47,6 +47,14 @@ def plot_sample(orig, output, target, edges, save_path, epoch, batch_idx, mode):
     ax3 = axes[0][1]
     ax3.title.set_text('Edges')
     im3 = ax3.imshow(imgs[3], vmin=np.min(imgs[3]), vmax=np.max(imgs[3]))
+
+    ax4 = axes[1][2]
+    ax4.title.set_text('Pixelwise loss')
+    im4 = ax4.imshow(imgs[4], vmin=np.min(imgs[4]), vmax=np.max(imgs[4]))
+    cax4 = make_axes_locatable(ax4).append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im4, cax=cax4)
+
+    fig.delaxes(axes[0][2])
 
     fig.tight_layout(pad=1.0)
     plt.savefig(f'{save_path}/{mode}_sample_{epoch}_{batch_idx}.png', dpi=300)

@@ -2,18 +2,20 @@ import numpy as np
 import torch
 import os
 import cv2
-from torch.autograd import Variable
 import torch.nn as nn
+from torch.autograd import Variable
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import MultiplicativeLR
 from src.data.make_dataset import DatadirParser, TrainValTestSplitter, BeraDataset
+from src.data import SPLITS_DIR, DEPTH_MAPS
 from src.models.mde_net import FPNNet
 from src.models.losses import GradLoss, NormalLoss, MaskedL1Loss
 from src.models.util import plot_metrics, plot_sample, save_dict, imgrad_yx, save_dm
 from src.models.run_params import COMMON_PARAMS, MODEL_SPECIFIC_PARAMS, \
     MODEL_DIR, FIG_SAVE_PATH, FULL_MODEL_SAVING_PATH, RUN_CNT
 from src.models.ssim import SSIM
+from src.models.metrics import root_mean_squared_error
 
 # set model type
 model_class = FPNNet
@@ -25,18 +27,6 @@ device = torch.device("cuda") if params['parallel'] \
 loader = transforms.Compose([transforms.ToTensor()])
 
 
-def mean_relative_error(output, target):
-    # todo might not be valid with normalization
-    target_no_zeros = torch.where(target > 0, target, target + 0.001)
-    loss = torch.mean(torch.abs(output - target) / torch.abs(target_no_zeros))
-    return loss.item()
-
-
-def root_mean_squared_error(output, target):
-    loss = torch.sqrt(torch.mean((output - target) ** 2))
-    return loss.item()
-
-
 def save_model_chk(epoch, model, optimizer, path):
     torch.save({
         'epoch': epoch,
@@ -46,23 +36,14 @@ def save_model_chk(epoch, model, optimizer, path):
 
 
 def compute_metrics(output, target):
-    mre = mean_relative_error(output, target)
+    # mre = mean_relative_error(output, target)
     rmse = root_mean_squared_error(output, target)
     l1 = nn.L1Loss().forward(output, target).item()
-    print(f'MRE: {mre}, RMSE: {rmse}, L1: {l1}')
-    return mre, rmse, l1
+    print(f'RMSE: {rmse}, L1: {l1}')
+    return rmse, l1
 
 
-def prepare_var(data):
-    orig_inp = data['image'].permute(0, 3, 1, 2)
-    inp = Variable(orig_inp).to(device, dtype=torch.float)
-    target = Variable(data['depth']).to(device, dtype=torch.float).unsqueeze(1)
-    mask = data['mask'].to(device).unsqueeze(1)
-    edges = Variable(data['edges']).to(device).unsqueeze(1)
-    return inp, target, mask, edges, orig_inp
-
-
-def log_sample(cur_batch, plot_every, out, target, inp, edges, path, epoch, mode):
+def log_sample(cur_batch, plot_every, out, target, inp, edges, pixel_loss, path, epoch, mode):
     if cur_batch % plot_every == 0:
         plot_sample(cv2.merge((inp[0][0, :, :].numpy(),
                                inp[0][1, :, :].numpy(),
@@ -70,11 +51,16 @@ def log_sample(cur_batch, plot_every, out, target, inp, edges, path, epoch, mode
                     out[0][0, :, :].cpu().detach().numpy(),
                     target[0][0, :, :].cpu().detach().numpy(),
                     edges[0][0, :, :].cpu().numpy(),
+                    pixel_loss[0][0, :, :].cpu().detach().numpy(),
                     path, epoch, cur_batch, mode)
 
 
 def get_prediction(data, model):
-    inp, target, mask, edges, orig_inp = prepare_var(data)
+    orig_inp = data['image'].permute(0, 3, 1, 2)
+    inp = Variable(orig_inp).to(device, dtype=torch.float)
+    target = Variable(data['depth']).to(device, dtype=torch.float).unsqueeze(1)
+    mask = data['mask'].to(device).unsqueeze(1)
+    edges = Variable(data['edges']).to(device).unsqueeze(1)
     out = model(inp)
     if not interpolate:
         out = out * mask
@@ -82,42 +68,44 @@ def get_prediction(data, model):
     return inp, out, target, edges.detach(), orig_inp.detach()
 
 
-def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim, batch_idx):
+def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim, batch_idx, reg=False):
     inp, out, target, edges, orig_inp = get_prediction(data, model)
     imgrad_true = imgrad_yx(target, device)
     imgrad_out = imgrad_yx(out, device)
-    l1_loss = l1_criterion(out, target, edges, device, factor=params['edge_factor'])
+    l1_loss, l1_losses = l1_criterion(out, target, edges, device, factor=params['edge_factor'])
     loss_grad = criterion_img(imgrad_out, imgrad_true)
     loss_normal = criterion_norm(imgrad_out, imgrad_true)
     # loss_ssim = criterion_ssim(out, target)
     # loss_range = l1_criterion(out_range, range)
     total_loss = l1_loss + loss_grad + 0.5 * loss_normal
-    # if mode == "train":
-    #     loss_reg = Variable(torch.tensor(0.)).to(DEVICE)
-    #     for param in model.parameters():
-    #         loss_reg = loss_reg + param.norm(2)
-    #     total_loss = total_loss + 1e-20 * loss_reg
+    if reg:
+        loss_reg = Variable(torch.tensor(0.)).to(device)
+        for param in model.parameters():
+            loss_reg = loss_reg + param.norm(2)
+        total_loss = total_loss + 1e-20 * loss_reg
     if batch_idx % 10 == 0:
         print(f'DM l1-loss: {l1_loss.item()}, '
               f'Loss Grad: {loss_grad.item()},  '
               f'Loss Normal: {loss_normal.item()}')
-    return total_loss, out, target, inp, orig_inp, edges
+    return total_loss, l1_losses, out, target, inp, orig_inp, edges
 
 
 def train_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, ssim, fig_save_path, epoch, batch_idx):
-    loss, out, target, inp, orig_inp, edges = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, ssim, batch_idx)
+    loss, l1_losses, out, target, inp, orig_inp, edges = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, ssim, batch_idx)
     if params['plot_sample']:
-        log_sample(batch_idx, 10, out, target, orig_inp, edges, fig_save_path, epoch, "train")
+        log_sample(batch_idx, 100, out, target, orig_inp, edges, l1_losses,
+                   fig_save_path, epoch, "train")
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
     return loss.item()
 
 
-def evaluate_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, ssim, fig_save_path, epoch, batch_idx):
-    loss, out, target, inp, orig_inp, edges = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, ssim, batch_idx)
+def validate_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, ssim, fig_save_path, epoch, batch_idx):
+    loss, l1_losses, out, target, inp, orig_inp, edges = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, ssim, batch_idx)
     if params['plot_sample']:
-        log_sample(batch_idx, 100, out, target, orig_inp, edges, fig_save_path, epoch, "validate")
+        log_sample(batch_idx, 100, out, target, orig_inp, edges, l1_losses,
+                   fig_save_path, epoch, "validate")
     return loss.item()
 
 
@@ -141,7 +129,7 @@ if __name__ == '__main__':
     loader_init_fn = lambda worker_id: np.random.seed(random_seed + worker_id)
 
     # dataset
-    parser = DatadirParser()
+    parser = DatadirParser(SPLITS_DIR, DEPTH_MAPS)
     images, depths = parser.get_parsed()
     splitter = TrainValTestSplitter(images, depths, random_seed=random_seed, test_size=params['test_size'])
 
@@ -202,7 +190,7 @@ if __name__ == '__main__':
             model.eval()
             with torch.no_grad():
                 for batch_idx, data in enumerate(val_loader):
-                    loss = evaluate_on_batch(data=data, model=model,
+                    loss = validate_on_batch(data=data, model=model,
                                              l1_criterion=l1_criterion, criterion_img=grad_criterion, criterion_norm=normal_criterion, ssim=ssim,
                                              fig_save_path=FIG_SAVE_PATH, epoch=epoch, batch_idx=batch_idx)
                     print(f'Epoch {epoch}, batch_idx {batch_idx} val loss: {loss}')
@@ -230,7 +218,7 @@ if __name__ == '__main__':
         with torch.no_grad():
             for batch_idx, data in enumerate(test_loader):
                 inp, out, target, edges, orig_inp = get_prediction(data, model)
-                mre_loss, rmse_loss, l1_loss = compute_metrics(out, target)
+                rmse_loss, l1_loss = compute_metrics(out, target)
                 rmse.append(rmse_loss)
                 l1.append(l1_loss)
                 if params['plot_sample']:

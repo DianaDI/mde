@@ -9,10 +9,10 @@ from src.data import MIN_DEPTH, MAX_DEPTH
 
 
 class DatadirParser():
-    def __init__(self, data_dir="/mnt/data/davletshina/datasets/Bera_MDE"):
-        self.data_dir = f'{data_dir}/splits2'
+    def __init__(self, data_dir, depth_maps_dir):
+        self.data_dir = data_dir
         self.img_name_prefixes = ["KirbyLeafOff2017RGBNEntireSite", "KirbyLeafOn2017RGBNEntireSite"]
-        self.depth_dir = f'{data_dir}/depth_maps2/*'
+        self.depth_dir = depth_maps_dir
         self.img_list = self.get_files(self.data_dir, self.img_name_prefixes)
         self.depth_list = sorted(glob(self.depth_dir))
 
@@ -93,8 +93,6 @@ class BeraDataset(Dataset):
     def __getitem__(self, index):
         """Reads sample"""
         image = cv2.imread(self.img_filenames[index])
-        image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
-        image = cv2.flip(image, 1)
         edges = get_edges(image, self.dm_dim)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         label_orig = np.load(self.depth_filenames[index], allow_pickle=True)
