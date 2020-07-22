@@ -125,6 +125,7 @@ if __name__ == '__main__':
     normalise = params['normalise']
     normalise_type = params['normalise_type']
     interpolate = params['interpolate']
+    num_channels = params['num_channels']
 
     loader_init_fn = lambda worker_id: np.random.seed(random_seed + worker_id)
 
@@ -134,18 +135,21 @@ if __name__ == '__main__':
     splitter = TrainValTestSplitter(images, depths, random_seed=random_seed, test_size=params['test_size'])
 
     train_ds = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth,
-                           normalise=normalise, normalise_type=normalise_type, interpolate=interpolate)
+                           num_channels=num_channels, normalise=normalise, normalise_type=normalise_type,
+                           interpolate=interpolate)
     validation_ds = BeraDataset(img_filenames=splitter.data_val.image, depth_filenames=splitter.data_val.depth,
-                                normalise=normalise, normalise_type=normalise_type, interpolate=interpolate)
+                                num_channels=num_channels, normalise=normalise, normalise_type=normalise_type,
+                                interpolate=interpolate)
     test_ds = BeraDataset(img_filenames=splitter.data_test.image, depth_filenames=splitter.data_test.depth,
-                          normalise=normalise, normalise_type=normalise_type, interpolate=interpolate)
+                          num_channels=num_channels, normalise=normalise, normalise_type=normalise_type,
+                          interpolate=interpolate)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(validation_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
 
     # network initialization
-    model = FPNNet()
+    model = FPNNet(num_channels=num_channels)
     print(model)
     if params['parallel']:
         if torch.cuda.device_count() > 1:

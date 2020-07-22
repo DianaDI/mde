@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models.resnet import resnet101
@@ -33,19 +32,22 @@ def predict_range(inp, out):
 
 
 class FPNNet(nn.Module):
-    def __init__(self, pretrained=True):
+    def __init__(self, num_channels=3, pretrained=True):
         super(FPNNet, self).__init__()
 
         resnet = resnet101(pretrained=pretrained)
 
-        self.layer0 = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool)
+        self.img_channels = num_channels
+        self.inplanes = 64
+
+        self.conv1 = nn.Conv2d(self.img_channels, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
+
+        self.layer0 = nn.Sequential(self.conv1, resnet.bn1, resnet.relu, resnet.maxpool)
         self.layer1 = nn.Sequential(resnet.layer1)  # 256
         self.layer2 = nn.Sequential(resnet.layer2)  # 512
         self.layer3 = nn.Sequential(resnet.layer3)  # 1024
-        # self.layer4 = nn.Sequential(resnet.layer4)  # 2048
 
         # Top layer
-        # self.toplayer = nn.Conv2d(2048, 256, kernel_size=1, stride=1, padding=0)  # Reduce channels
         self.toplayer = nn.Conv2d(1024, 256, kernel_size=1, stride=1, padding=0)  # Reduce channels
 
         # Lateral layers
@@ -86,7 +88,6 @@ class FPNNet(nn.Module):
         c2 = self.layer1(c1)  # 256 channels
         c3 = self.layer2(c2)  # 512 channels
         c4 = self.layer3(c3)  # 1024 channels
-        # c5 = self.layer4(c4)  # 2048 channels
 
         # Top-down
         p5 = self.toplayer(c4)  # 256 channels

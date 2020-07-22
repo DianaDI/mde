@@ -79,12 +79,13 @@ class TrainValTestSplitter:
 
 
 class BeraDataset(Dataset):
-    def __init__(self, img_filenames, depth_filenames, normalise=True, normalise_type='local', interpolate=False):
+    def __init__(self, img_filenames, depth_filenames, num_channels=3, normalise=True, normalise_type='local', interpolate=False):
         self.img_filenames = img_filenames
         self.depth_filenames = depth_filenames
         self.normalize = normalise
         self.normalize_type = normalise_type
         self.interpolate = interpolate
+        self.num_channels = num_channels
         self.dm_dim = (128, 128)
 
     def __len__(self):
@@ -92,9 +93,11 @@ class BeraDataset(Dataset):
 
     def __getitem__(self, index):
         """Reads sample"""
-        image = cv2.imread(self.img_filenames[index])
+        image = cv2.imread(self.img_filenames[index]) if self.num_channels == 3 \
+            else cv2.imread(self.img_filenames[index], cv2.IMREAD_UNCHANGED)
         edges = get_edges(image, self.dm_dim)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        if self.num_channels == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         label_orig = np.load(self.depth_filenames[index], allow_pickle=True)
         label = rebin(label_orig, self.dm_dim)
         # range = np.array([np.min(label[np.nonzero(label)]), np.max(label[np.nonzero(label)])])
