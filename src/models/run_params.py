@@ -1,4 +1,4 @@
-RUN_CNT = 68
+RUN_CNT = 70
 MODEL_DIR = f"run{RUN_CNT}"
 FULL_MODEL_SAVING_PATH = f"{MODEL_DIR}/fpn_model_run{RUN_CNT}.pth"
 FIG_SAVE_PATH = f"/mnt/data/davletshina/mde/reports/figures/{MODEL_DIR}"
@@ -23,7 +23,7 @@ COMMON_PARAMS = {
 
 MODEL_SPECIFIC_PARAMS = {
     'FPNNet': {
-        'num_channels': 4,
+        'num_channels': 3,
         'lr': 0.00001,
         'lr_decay': 0.95,
         'batch_size': 10,

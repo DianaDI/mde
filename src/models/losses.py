@@ -34,3 +34,13 @@ class MaskedL1Loss(nn.Module):
         mask = torch.where(mask == 0, ones, mask).to(device, dtype=torch.float)
         losses = torch.abs((target - pred) * mask)
         return torch.mean(losses), losses
+
+
+class L1Loss(nn.Module):
+    def __init__(self):
+        super(L1Loss, self).__init__()
+
+    # L1 norm
+    def forward(self, pred, target):
+        losses = torch.abs(target - pred)
+        return torch.mean(losses), losses

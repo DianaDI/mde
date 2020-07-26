@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import MultiplicativeLR
 from src.data.make_dataset import DatadirParser, TrainValTestSplitter, BeraDataset
 from src.data import SPLITS_DIR, DEPTH_MAPS
 from src.models.mde_net import FPNNet
-from src.models.losses import GradLoss, NormalLoss, MaskedL1Loss
+from src.models.losses import GradLoss, NormalLoss, MaskedL1Loss, L1Loss
 from src.models.util import plot_metrics, plot_sample, save_dict, imgrad_yx, save_dm
 from src.models.run_params import COMMON_PARAMS, MODEL_SPECIFIC_PARAMS, \
     MODEL_DIR, FIG_SAVE_PATH, FULL_MODEL_SAVING_PATH, RUN_CNT
@@ -38,9 +38,9 @@ def save_model_chk(epoch, model, optimizer, path):
 def compute_metrics(output, target):
     # mre = mean_relative_error(output, target)
     rmse = root_mean_squared_error(output, target)
-    l1 = nn.L1Loss().forward(output, target).item()
+    l1, pixel_losses = L1Loss().forward(output, target)
     print(f'RMSE: {rmse}, L1: {l1}')
-    return rmse, l1
+    return rmse, l1.item(), pixel_losses
 
 
 def log_sample(cur_batch, plot_every, out, target, inp, edges, pixel_loss, path, epoch, mode):
@@ -75,9 +75,8 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterio
     l1_loss, l1_losses = l1_criterion(out, target, edges, device, factor=params['edge_factor'])
     loss_grad = criterion_img(imgrad_out, imgrad_true)
     loss_normal = criterion_norm(imgrad_out, imgrad_true)
-    # loss_ssim = criterion_ssim(out, target)
-    # loss_range = l1_criterion(out_range, range)
-    total_loss = l1_loss + loss_grad + 0.5 * loss_normal
+    loss_ssim = criterion_ssim(out, target)
+    total_loss = l1_loss + loss_grad + 0.5 * loss_normal + 0.5 * loss_ssim
     if reg:
         loss_reg = Variable(torch.tensor(0.)).to(device)
         for param in model.parameters():
@@ -86,12 +85,14 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterio
     if batch_idx % 10 == 0:
         print(f'DM l1-loss: {l1_loss.item()}, '
               f'Loss Grad: {loss_grad.item()},  '
-              f'Loss Normal: {loss_normal.item()}')
+              f'Loss Normal: {loss_normal.item()}, '
+              f'Loss SSIM: {loss_ssim.item()}')
     return total_loss, l1_losses, out, target, inp, orig_inp, edges
 
 
-def train_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, ssim, fig_save_path, epoch, batch_idx):
-    loss, l1_losses, out, target, inp, orig_inp, edges = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, ssim, batch_idx)
+def train_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim, fig_save_path, epoch, batch_idx):
+    loss, l1_losses, out, target, inp, orig_inp, edges = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim,
+                                                                   batch_idx)
     if params['plot_sample']:
         log_sample(batch_idx, 100, out, target, orig_inp, edges, l1_losses,
                    fig_save_path, epoch, "train")
@@ -101,8 +102,9 @@ def train_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, ssi
     return loss.item()
 
 
-def validate_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, ssim, fig_save_path, epoch, batch_idx):
-    loss, l1_losses, out, target, inp, orig_inp, edges = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, ssim, batch_idx)
+def validate_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim, fig_save_path, epoch, batch_idx):
+    loss, l1_losses, out, target, inp, orig_inp, edges = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim,
+                                                                   batch_idx)
     if params['plot_sample']:
         log_sample(batch_idx, 100, out, target, orig_inp, edges, l1_losses,
                    fig_save_path, epoch, "validate")
@@ -150,11 +152,13 @@ if __name__ == '__main__':
 
     # network initialization
     model = FPNNet(num_channels=num_channels)
-    print(model)
+    # Create the Discriminator
+    ngpu = torch.cuda.device_count()
+
     if params['parallel']:
-        if torch.cuda.device_count() > 1:
-            print("Using", torch.cuda.device_count(), "GPUs")
-            model = nn.DataParallel(model, device_ids=[0, 1])
+        if ngpu > 1:
+            print(f"Using {ngpu} GPUs")
+            model = nn.DataParallel(model, list(range(ngpu)))
     model.to(device)
 
     total_params = sum(p.numel() for p in model.parameters())
@@ -184,7 +188,8 @@ if __name__ == '__main__':
             model.train()
             for batch_idx, data in enumerate(train_loader):
                 loss = train_on_batch(data=data, model=model,
-                                      l1_criterion=l1_criterion, criterion_img=grad_criterion, criterion_norm=normal_criterion, ssim=ssim,
+                                      l1_criterion=l1_criterion, criterion_img=grad_criterion, criterion_norm=normal_criterion,
+                                      criterion_ssim=ssim,
                                       fig_save_path=FIG_SAVE_PATH, epoch=epoch, batch_idx=batch_idx)
                 print(f'Epoch {epoch}, batch_idx {batch_idx} train loss: {loss}')
                 train_loss.append(loss)
@@ -195,7 +200,8 @@ if __name__ == '__main__':
             with torch.no_grad():
                 for batch_idx, data in enumerate(val_loader):
                     loss = validate_on_batch(data=data, model=model,
-                                             l1_criterion=l1_criterion, criterion_img=grad_criterion, criterion_norm=normal_criterion, ssim=ssim,
+                                             l1_criterion=l1_criterion, criterion_img=grad_criterion, criterion_norm=normal_criterion,
+                                             criterion_ssim=ssim,
                                              fig_save_path=FIG_SAVE_PATH, epoch=epoch, batch_idx=batch_idx)
                     print(f'Epoch {epoch}, batch_idx {batch_idx} val loss: {loss}')
                     valid_loss.append(loss)
@@ -222,11 +228,11 @@ if __name__ == '__main__':
         with torch.no_grad():
             for batch_idx, data in enumerate(test_loader):
                 inp, out, target, edges, orig_inp = get_prediction(data, model)
-                rmse_loss, l1_loss = compute_metrics(out, target)
+                rmse_loss, l1_loss, pixel_losses = compute_metrics(out, target)
                 rmse.append(rmse_loss)
                 l1.append(l1_loss)
                 if params['plot_sample']:
-                    log_sample(batch_idx, 50, out, target, orig_inp, edges, FIG_SAVE_PATH, "", "eval")
+                    log_sample(batch_idx, 50, out, target, orig_inp, edges, pixel_losses, FIG_SAVE_PATH, "", "eval")
                     if batch_idx % 100 == 0:
                         save_dm(out[0][0, :, :].cpu().detach().numpy(), target[0][0, :, :].cpu().detach().numpy(), FIG_SAVE_PATH, batch_idx)
         results = {
