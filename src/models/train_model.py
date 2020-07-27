@@ -76,7 +76,7 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterio
     loss_grad = criterion_img(imgrad_out, imgrad_true)
     loss_normal = criterion_norm(imgrad_out, imgrad_true)
     loss_ssim = criterion_ssim(out, target)
-    total_loss = l1_loss + loss_grad + 0.5 * loss_normal + 0.5 * loss_ssim
+    total_loss = l1_loss + 0.5 * loss_grad + 0.5 * loss_normal + 0.5 * loss_ssim
     if reg:
         loss_reg = Variable(torch.tensor(0.)).to(device)
         for param in model.parameters():

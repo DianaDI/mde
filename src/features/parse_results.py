@@ -29,6 +29,3 @@ for dir in tqdm(glob(f'{res_dir}/run*')):
 path_to_save = f'{res_dir}/all_res.csv'
 print(f'Saving to {path_to_save}')
 res_df.to_csv(path_to_save, index=False)
-
-
-
