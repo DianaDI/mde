@@ -1,4 +1,4 @@
-RUN_CNT = 72
+RUN_CNT = 73
 MODEL_DIR = f"run{RUN_CNT}"
 FULL_MODEL_SAVING_PATH = f"{MODEL_DIR}/fpn_model_run{RUN_CNT}.pth"
 FIG_SAVE_PATH = f"/mnt/data/davletshina/mde/reports/figures/{MODEL_DIR}"
@@ -11,7 +11,7 @@ COMMON_PARAMS = {
     'normalise': True,
     'normalise_type': 'local',  # 'global', 'local'
     'random_seed': 123,
-    'num_workers': 3,  # set number of cpu cores for images processing
+    'num_workers': 10,  # set number of cpu cores for data processing
     'parallel': True,
     'gpu_id': 1,
     'plot_sample': True,

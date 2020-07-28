@@ -75,8 +75,8 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterio
     l1_loss, l1_losses = l1_criterion(out, target, edges, device, factor=params['edge_factor'])
     loss_grad = criterion_img(imgrad_out, imgrad_true)
     loss_normal = criterion_norm(imgrad_out, imgrad_true)
-    loss_ssim = criterion_ssim(out, target)
-    total_loss = l1_loss + 0.5 * loss_grad + 0.5 * loss_normal + 0.5 * loss_ssim
+    #loss_ssim = criterion_ssim(out, target)
+    total_loss = l1_loss + loss_grad + 0.5 * loss_normal #+ 0.5 * loss_ssim
     if reg:
         loss_reg = Variable(torch.tensor(0.)).to(device)
         for param in model.parameters():
@@ -85,8 +85,8 @@ def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterio
     if batch_idx % 10 == 0:
         print(f'DM l1-loss: {l1_loss.item()}, '
               f'Loss Grad: {loss_grad.item()},  '
-              f'Loss Normal: {loss_normal.item()}, '
-              f'Loss SSIM: {loss_ssim.item()}')
+              f'Loss Normal: {loss_normal.item()}, ')
+              #f'Loss SSIM: {loss_ssim.item()}')
     return total_loss, l1_losses, out, target, inp, orig_inp, edges
 
 
