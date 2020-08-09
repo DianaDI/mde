@@ -45,17 +45,23 @@ def plot_sample(orig, output, target, edges, pixel_loss, save_path, epoch, batch
     fig.colorbar(im2, cax=cax2)
 
     ax3 = axes[0][1]
-    ax3.title.set_text('Edges')
-    im3 = ax3.imshow(imgs[3], vmin=np.min(imgs[3]), vmax=np.max(imgs[3]))
-
-    ax4 = axes[1][2]
-    if mode == "eval":
-        ax4.title.set_text('L1-loss')
+    if mode != "eval":
+        ax3.title.set_text('Edges')
+        im3 = ax3.imshow(imgs[3], vmin=np.min(imgs[3]), vmax=np.max(imgs[3]))
     else:
+        ax3.title.set_text('L1-loss')
+        im3 = ax3.imshow(imgs[4], vmin=np.min(imgs[4]), vmax=np.max(imgs[4]))
+        cax3 = make_axes_locatable(ax3).append_axes("right", size="5%", pad=0.05)
+        fig.colorbar(im3, cax=cax3)
+
+    if mode != "eval":
+        ax4 = axes[1][2]
         ax4.title.set_text('Weighted pixelwise L1-loss')
-    im4 = ax4.imshow(imgs[4], vmin=np.min(imgs[4]), vmax=np.max(imgs[4]))
-    cax4 = make_axes_locatable(ax4).append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(im4, cax=cax4)
+        im4 = ax4.imshow(imgs[4], vmin=np.min(imgs[4]), vmax=np.max(imgs[4]))
+        cax4 = make_axes_locatable(ax4).append_axes("right", size="5%", pad=0.05)
+        fig.colorbar(im4, cax=cax4)
+    else:
+        fig.delaxes(axes[1][2])
 
     fig.delaxes(axes[0][2])
 

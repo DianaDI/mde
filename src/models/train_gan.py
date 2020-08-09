@@ -143,13 +143,15 @@ if __name__ == '__main__':
     ngpu = torch.cuda.device_count()
     netD = Discriminator(ngpu)
 
+    model.to(device)
+    netD.to(device)
+
     if params['parallel']:
         if ngpu > 1:
             print(f"Using {ngpu} GPUs")
-            model = nn.DataParallel(model, list(range(ngpu)))
-            netD = nn.DataParallel(netD, list(range(ngpu)))
-    model.to(device)
-    netD.to(device)
+            model = nn.DataParallel(model, [0, 1])
+            netD = nn.DataParallel(netD, [0, 1])
+
 
     total_params = sum(p.numel() for p in model.parameters())
     print(f'\nNum of parameters: {total_params}')
@@ -167,7 +169,7 @@ if __name__ == '__main__':
     # Size of feature maps in discriminator
     ndf = 64
     # Learning rate for optimizers
-    lr_d = 0.0002
+    lr_d = 0.00001
     # Beta1 hyperparam for Adam optimizers
     beta1_d = 0.5
 
@@ -245,6 +247,7 @@ if __name__ == '__main__':
 
                 # Calculate G's loss based on this output
                 errG = criterion_bce(output, label)
+                errG = 0.5 * errG
                 loss, _, _, _, _, _, _ = calc_loss(data, model, l1_criterion, grad_criterion, normal_criterion, batch_idx)
 
                 loss.backward()
@@ -301,7 +304,7 @@ if __name__ == '__main__':
                 inp, out, target, edges, orig_inp = get_prediction(data, model)
                 rmse_loss, l1_loss, pixel_losses = compute_metrics(out, target)
                 rmse.append(rmse_loss)
-                l1.append(l1_loss)
+                l1.append(l1_loss.item())
                 if params['plot_sample']:
                     log_sample(batch_idx, 50, out, target, orig_inp, edges, pixel_losses, FIG_SAVE_PATH, "", "eval")
                     if batch_idx % 100 == 0:
