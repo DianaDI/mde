@@ -35,7 +35,7 @@ def get_closest_empty_pixel(arr, x, y):
         return None, None
 
 
-def get_depth_map(path_to_las, path_to_tif):
+def get_depth_map(path_to_las, path_to_tif, verbose=False):
     depth_map = np.zeros([IMG_WIDTH, ING_HEIGHT])
     xyz = LasReader.get_xyz(path_to_las)
     n = len(xyz)
@@ -50,9 +50,9 @@ def get_depth_map(path_to_las, path_to_tif):
                 depth_map[x][y] = round(xyz[i][2], 4)
             else:
                 cnt += 1
-                print("Empty pixel not found. Depth value was omitted")
+                if verbose: print("Empty pixel not found. Depth value was omitted")
         if cnt > 0:
-            print(f'Not found correspondences {cnt}/{n}')
+            if verbose: print(f'Not found correspondences {cnt}/{n}')
         return depth_map
     else:
         return None
@@ -75,15 +75,14 @@ def process_dir(dir):
 
 
 if __name__ == "__main__":
-    splits_dir = "/mnt/data/davletshina/datasets/Bera_MDE/splits2/"
-    save_dir = f'/mnt/data/davletshina/datasets/Bera_MDE/depth_maps2_v2/'
+    splits_dir = "/mnt/data/davletshina/datasets/Bera_MDE/splits3/"
+    save_dir = f'/mnt/data/davletshina/datasets/Bera_MDE/depth_maps3/'
 
     try:
         os.makedirs(save_dir)
     except OSError as e:
         print(e)
-    las_dirs = ["KirbyLeafOff2017PointCloudEntireSite",
-                "KirbyLeafOn2017PointCloudEntireSite"]
+    las_dirs = ["KirbyLeafOn2017PointCloudEntireSite", "KirbyLeafOff2017PointCloudEntireSite"]
     num_cores = 2  # multiprocessing.cpu_count()
     print(f'RUNNING ON {num_cores} CPUs')
     Parallel(n_jobs=num_cores)(delayed(process_dir)(d) for d in las_dirs)

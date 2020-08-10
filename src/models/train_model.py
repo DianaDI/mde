@@ -15,7 +15,7 @@ from src.models.util import plot_metrics, plot_sample, save_dict, imgrad_yx, sav
 from src.models.run_params import COMMON_PARAMS, MODEL_SPECIFIC_PARAMS, \
     MODEL_DIR, FIG_SAVE_PATH, FULL_MODEL_SAVING_PATH, RUN_CNT
 from src.models.ssim import SSIM
-from src.models.metrics import root_mean_squared_error
+from src.models.metrics import root_mean_squared_error, rmse_absolute, l1_absolute_error
 
 # set model type
 model_class = FPNNet
@@ -35,12 +35,14 @@ def save_model_chk(epoch, model, optimizer, path):
     }, path)
 
 
-def compute_metrics(output, target):
+def compute_metrics(output, target, min, max):
     # mre = mean_relative_error(output, target)
     rmse = root_mean_squared_error(output, target)
     l1, pixel_losses = L1Loss().forward(output, target)
-    print(f'RMSE: {rmse}, L1: {l1}')
-    return rmse, l1.item(), pixel_losses
+    l1_abs = l1_absolute_error(output, target, min, max)
+    rmse_abs = rmse_absolute(output, target, min, max)
+    print(f'RMSE: {rmse}, L1: {l1}, RMSE abs: {rmse_abs}, L1 abs: {l1_abs}')
+    return rmse, l1.item(), pixel_losses, l1_abs, rmse_abs
 
 
 def log_sample(cur_batch, plot_every, out, target, inp, edges, pixel_loss, path, epoch, mode):
@@ -50,7 +52,7 @@ def log_sample(cur_batch, plot_every, out, target, inp, edges, pixel_loss, path,
                                inp[0][2, :, :].numpy())),
                     out[0][0, :, :].cpu().detach().numpy(),
                     target[0][0, :, :].cpu().detach().numpy(),
-                    edges[0][0, :, :].cpu().numpy(),
+                    edges[0][0, :, :].cpu().numpy() if mode != "eval" else None,
                     pixel_loss[0][0, :, :].cpu().detach().numpy(),
                     path, epoch, cur_batch, mode)
 
@@ -61,15 +63,17 @@ def get_prediction(data, model):
     target = Variable(data['depth']).to(device, dtype=torch.float).unsqueeze(1)
     mask = data['mask'].to(device).unsqueeze(1)
     edges = Variable(data['edges']).to(device).unsqueeze(1)
+    range_min = data['range_min'].to(device, dtype=torch.float)
+    range_max = data['range_max'].to(device, dtype=torch.float)
     out = model(inp)
     if not interpolate:
         out = out * mask
         target = target * mask
-    return inp, out, target, edges.detach(), orig_inp.detach()
+    return inp, out, target, edges.detach(), orig_inp.detach(), range_min.detach(), range_max.detach()
 
 
 def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim, batch_idx, reg=False):
-    inp, out, target, edges, orig_inp = get_prediction(data, model)
+    inp, out, target, edges, orig_inp, _, _ = get_prediction(data, model)
     imgrad_true = imgrad_yx(target, device)
     imgrad_out = imgrad_yx(out, device)
     l1_loss, l1_losses = l1_criterion(out, target, edges, device, factor=params['edge_factor'])
@@ -224,20 +228,24 @@ if __name__ == '__main__':
         print("\nEVALUATION STARTING...")
         model.load_state_dict(torch.load(FULL_MODEL_SAVING_PATH))
         model.eval()
-        mre, rmse, l1, l1_range = [], [], [], []
+        rmse_abs, rmse, l1, l1_abs = [], [], [], []
         with torch.no_grad():
             for batch_idx, data in enumerate(test_loader):
-                _, out, target, _, orig_inp = get_prediction(data, model)
-                rmse_loss, l1_loss, pixel_losses = compute_metrics(out, target)
+                _, out, target, _, orig_inp, range_min, range_max = get_prediction(data, model)
+                rmse_loss, l1_loss, pixel_losses, l1_abs_loss, rmse_abs_loss = compute_metrics(out, target, range_min, range_max)
                 rmse.append(rmse_loss)
                 l1.append(l1_loss)
+                rmse_abs.append(rmse_abs_loss)
+                l1_abs.append(l1_abs_loss)
                 if params['plot_sample']:
                     log_sample(batch_idx, 50, out, target, orig_inp, None, pixel_losses, FIG_SAVE_PATH, "", "eval")
                     if batch_idx % 100 == 0:
                         save_dm(out[0][0, :, :].cpu().detach().numpy(), target[0][0, :, :].cpu().detach().numpy(), FIG_SAVE_PATH, batch_idx)
         results = {
             "Mean RMSE Loss": np.mean(rmse),
-            "Mean L1 Loss": np.mean(l1)
+            "Mean L1 Loss": np.mean(l1),
+            "Mean RMSE Abs Loss": np.mean(rmse_abs),
+            "Mean L1 Abs Loss": np.mean(l1_abs)
         }
         for key in results:
             print(f'{key}: {results[key]}')
