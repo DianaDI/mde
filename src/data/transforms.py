@@ -11,7 +11,7 @@ def minmax(arr):
 
 
 def minmax_custom(arr, min, max):
-    return (arr - min) / (max - min)
+    return (arr - min) / ((max - min) + 1e-6)
 
 
 def minmax_over_nonzero(arr):

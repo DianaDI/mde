@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models.resnet import resnet101
+from src.data import IMG_WIDTH
 
 
 # ============================= Feature Pyramid Network ================================= #
@@ -58,14 +59,17 @@ class FPNNet(nn.Module):
         # Smooth layers
         self.smooth1 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
         self.smooth2 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.smooth3 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1)
+        self.smooth3 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+
+        # Upconvolve to get bigger image (for 256x256 case)
+        self.upconv = nn.ConvTranspose2d(256, 256, kernel_size=2, stride=2)
 
         # Depth prediction
-        self.predict1 = predict(128, 64)
+        self.predict1 = predict(256, 64)
         self.predict2 = predict(64, 1)
         self.predict_range = predict_range(128 * 128 * 128, 128)
 
-        # self.print = print_size()
+        self.print = print_size()
         self.flatten = flatten()
 
     def _upsample_add(self, x, y):
@@ -97,7 +101,8 @@ class FPNNet(nn.Module):
         p3 = self.smooth2(p3)  # 256 channels
         p2 = self._upsample_add(p3, self.latlayer3(c2))  # 256 channels - 128
         p2 = self.smooth3(p2)  # 256 channels
-        # p3 = self.print(p2)
+        if IMG_WIDTH == 256:
+            p2 = self.upconv(p2)
         # flat = self.flatten(p2)
         # range = self.predict_range(flat)
         return self.predict2(self.predict1(p2))  # , range

@@ -18,7 +18,7 @@ if __name__ == "__main__":
     empty_dir = "/mnt/data/davletshina/datasets/Bera_MDE/empty3"
 
     # prefixes = ["KirbyLeafOn2017PointCloud", "KirbyLeafOff2017PointCloud"]
-    prefixes = ["KirbyLeafOff2017PointCloud"]
+    prefixes = ["KirbyLeafOn2017PointCloud"]
     # mv empty point clouds and corresponding imgs
     for prefix in prefixes:
         print(prefix)
