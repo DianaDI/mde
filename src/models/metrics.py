@@ -1,5 +1,7 @@
 import torch
+import math
 from src.data.transforms import minmax_reverse
+
 
 def mean_relative_error(output, target):
     # todo might not be valid with normalization
@@ -9,8 +11,9 @@ def mean_relative_error(output, target):
 
 
 def root_mean_squared_error(output, target):
-    loss = torch.mean(torch.sqrt((output - target) ** 2))
-    return loss.item()
+    # loss = torch.mean(torch.sqrt((output - target) ** 2))
+    loss = torch.nn.MSELoss().forward(output, target)
+    return math.sqrt(loss.item())
 
 
 def get_absolute_labels(output, target, min, max):
