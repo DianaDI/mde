@@ -6,7 +6,7 @@ class Discriminator(nn.Module):
         '''
         ngpu: number of GPUs available. Use 0 for CPU mode
         ndf: size of feature maps in discriminator
-        nc: number of channels in the training images
+        nc: number of channels in the training images, =1 in case of depth maps
         '''
         super(Discriminator, self).__init__()
         self.ngpu = ngpu
@@ -27,8 +27,7 @@ class Discriminator(nn.Module):
             nn.BatchNorm2d(ndf * 8),
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*8) x 4 x 4
-            nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False),
-            #nn.Sigmoid()
+            nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False)
         )
         self.fc = nn.Linear(25, 1)
         self.predict = nn.Sigmoid()

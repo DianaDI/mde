@@ -7,7 +7,7 @@ from tqdm import tqdm
 from src.data.las2xyz import LasReader
 import multiprocessing
 from joblib import Parallel, delayed
-from src.data import IMG_WIDTH, ING_HEIGHT
+from src.data import IMG_WIDTH, IMG_HEIGHT
 
 
 def world2pixel(x_world, y_world, xoffset, yoffset, w1, h2):
@@ -36,7 +36,7 @@ def get_closest_empty_pixel(arr, x, y):
 
 
 def get_depth_map(path_to_las, path_to_tif, verbose=False):
-    depth_map = np.zeros([IMG_WIDTH, ING_HEIGHT])
+    depth_map = np.zeros([IMG_WIDTH, IMG_HEIGHT])
     xyz = LasReader.get_xyz(path_to_las)
     n = len(xyz)
     if os.path.isfile(path_to_tif):

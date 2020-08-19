@@ -23,6 +23,7 @@ def get_absolute_labels(output, target, min, max):
         target[batch] = minmax_reverse(target[batch], min[batch], max[batch])
     return output, target
 
+
 def l1_absolute_error(output, target, min, max):
     output, target = get_absolute_labels(output, target, min, max)
     return torch.mean(torch.abs(target - output)).item()
@@ -31,3 +32,12 @@ def l1_absolute_error(output, target, min, max):
 def rmse_absolute(output, target, min, max):
     output, target = get_absolute_labels(output, target, min, max)
     return root_mean_squared_error(output, target)
+
+
+def compute_metrics(output, target, min, max):
+    rmse = root_mean_squared_error(output, target)
+    l1, pixel_losses = torch.nn.L1Loss().forward(output, target)
+    l1_abs = l1_absolute_error(output, target, min, max)
+    rmse_abs = rmse_absolute(output, target, min, max)
+    print(f'RMSE: {rmse}, L1: {l1}, RMSE abs: {rmse_abs}, L1 abs: {l1_abs}')
+    return rmse, l1.item(), pixel_losses, l1_abs, rmse_abs

@@ -1,26 +1,28 @@
 import numpy as np
 import torch
 import os
-import cv2
 import torch.nn as nn
-from torch.autograd import Variable
 from torchvision import transforms
+from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import MultiplicativeLR
 from src.data.make_dataset import DatadirParser, TrainValTestSplitter, BeraDataset
 from src.data import SPLITS_DIR, DEPTH_MAPS
 from src.models.mde_net import FPNNet
-from src.models.losses import GradLoss, NormalLoss, MaskedL1Loss, L1Loss
-from src.models.util import plot_metrics, plot_sample, save_dict, imgrad_yx, save_dm
+from src.models.losses import GradLoss, NormalLoss, MaskedL1Loss
+from src.models.util import plot_metrics, save_dict, log_sample
 from src.models.run_params import COMMON_PARAMS, MODEL_SPECIFIC_PARAMS, \
     MODEL_DIR, FIG_SAVE_PATH, FULL_MODEL_SAVING_PATH, RUN_CNT
 from src.models.ssim import SSIM
-from src.models.metrics import root_mean_squared_error, rmse_absolute, l1_absolute_error
+from src.models.eval import eval, calc_loss
+from src.models.discriminator import Discriminator, weights_init
 
 # set model type
 model_class = FPNNet
+gan_class = Discriminator
 
 params = {**COMMON_PARAMS, **MODEL_SPECIFIC_PARAMS[model_class.__name__]}
+params_gan = {**MODEL_SPECIFIC_PARAMS[gan_class.__name__]}
 
 device = torch.device("cuda") if params['parallel'] \
     else torch.device("cuda" if torch.cuda.is_available() else "cpu", params['gpu_id'])
@@ -30,73 +32,28 @@ loader = transforms.Compose([transforms.ToTensor()])
 def save_model_chk(epoch, model, optimizer, path):
     torch.save({
         'epoch': epoch,
-        'model_state_dict': model.state_dict(),
+        'model_state_dict': model.module.state_dict() if params['parallel'] else model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict()
     }, path)
 
 
-def compute_metrics(output, target, min, max):
-    # mre = mean_relative_error(output, target)
-    rmse = root_mean_squared_error(output, target)
-    l1, pixel_losses = L1Loss().forward(output, target)
-    l1_abs = l1_absolute_error(output, target, min, max)
-    rmse_abs = rmse_absolute(output, target, min, max)
-    print(f'RMSE: {rmse}, L1: {l1}, RMSE abs: {rmse_abs}, L1 abs: {l1_abs}')
-    return rmse, l1.item(), pixel_losses, l1_abs, rmse_abs
-
-
-def log_sample(cur_batch, plot_every, out, target, inp, edges, pixel_loss, path, epoch, mode):
-    if cur_batch % plot_every == 0:
-        plot_sample(cv2.merge((inp[0][0, :, :].numpy(),
-                               inp[0][1, :, :].numpy(),
-                               inp[0][2, :, :].numpy())),
-                    out[0][0, :, :].cpu().detach().numpy(),
-                    target[0][0, :, :].cpu().detach().numpy(),
-                    edges[0][0, :, :].cpu().numpy() if mode != "eval" else None,
-                    pixel_loss[0][0, :, :].cpu().detach().numpy(),
-                    path, epoch, cur_batch, mode)
-
-
-def get_prediction(data, model):
-    orig_inp = data['image'].permute(0, 3, 1, 2)
-    inp = Variable(orig_inp).to(device, dtype=torch.float)
-    target = Variable(data['depth']).to(device, dtype=torch.float).unsqueeze(1)
-    mask = data['mask'].to(device).unsqueeze(1)
-    edges = Variable(data['edges']).to(device).unsqueeze(1)
-    range_min = data['range_min'].to(device, dtype=torch.float)
-    range_max = data['range_max'].to(device, dtype=torch.float)
-    out = model(inp)
-    if not interpolate:
-        out = out * mask
-        target = target * mask
-    return inp, out, target, edges.detach(), orig_inp.detach(), range_min.detach(), range_max.detach()
-
-
-def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim, batch_idx, reg=False):
-    inp, out, target, edges, orig_inp, _, _ = get_prediction(data, model)
-    imgrad_true = imgrad_yx(target, device)
-    imgrad_out = imgrad_yx(out, device)
-    l1_loss, l1_losses = l1_criterion(out, target, edges, device, factor=params['edge_factor'])
-    loss_grad = criterion_img(imgrad_out, imgrad_true)
-    loss_normal = criterion_norm(imgrad_out, imgrad_true)
-    #loss_ssim = criterion_ssim(out, target)
-    total_loss = l1_loss + 0.5 * loss_grad + 0.5 * loss_normal #+ 0.5 * loss_ssim
-    if reg:
-        loss_reg = Variable(torch.tensor(0.)).to(device)
-        for param in model.parameters():
-            loss_reg = loss_reg + param.norm(2)
-        total_loss = total_loss + 1e-20 * loss_reg
-    if batch_idx % 10 == 0:
-        print(f'DM l1-loss: {l1_loss.item()}, '
-              f'Loss Grad: {loss_grad.item()},  '
-              f'Loss Normal: {loss_normal.item()}, ')
-              #f'Loss SSIM: {loss_ssim.item()}')
-    return total_loss, l1_losses, out, target, inp, orig_inp, edges
-
-
-def train_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim, fig_save_path, epoch, batch_idx):
-    loss, l1_losses, out, target, inp, orig_inp, edges = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim,
-                                                                   batch_idx)
+def train_mde_on_batch(data, model, fig_save_path, epoch, batch_idx, params):
+    """
+    Train the main MDE model
+    :param data: batch data
+    :param model: MDE model
+    :param fig_save_path:
+    :param epoch: current epoch
+    :param batch_idx:  current batch id
+    :return: loss on batch
+    """
+    loss, l1_losses, out, target, inp, orig_inp, edges = calc_loss(data, model,
+                                                                   l1_criterion, grad_criterion, normal_criterion,
+                                                                   device=device,
+                                                                   interpolate=params['interpolate'],
+                                                                   edge_factor=params['edge_factor'],
+                                                                   batch_idx=batch_idx)
+    print(f'Epoch {epoch}, batch_idx {batch_idx} train loss: {loss.item()}')
     if params['plot_sample']:
         log_sample(batch_idx, 100, out, target, orig_inp, edges, l1_losses,
                    fig_save_path, epoch, "train")
@@ -106,39 +63,89 @@ def train_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, cri
     return loss.item()
 
 
-def validate_on_batch(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim, fig_save_path, epoch, batch_idx):
-    loss, l1_losses, out, target, inp, orig_inp, edges = calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, criterion_ssim,
-                                                                   batch_idx)
+def validate_on_batch(data, model, fig_save_path, epoch, batch_idx, params):
+    loss, l1_losses, out, target, _, orig_inp, edges = calc_loss(data, model,
+                                                                 l1_criterion, grad_criterion, normal_criterion,
+                                                                 device=device,
+                                                                 interpolate=params['interpolate'],
+                                                                 edge_factor=params['edge_factor'],
+                                                                 batch_idx=batch_idx)
     if params['plot_sample']:
         log_sample(batch_idx, 100, out, target, orig_inp, edges, l1_losses,
                    fig_save_path, epoch, "validate")
     return loss.item()
 
 
-if __name__ == '__main__':
-    try:
-        os.makedirs(FIG_SAVE_PATH)
-        os.makedirs(MODEL_DIR)
-    except OSError as e:
-        print(e)
-        pass
+def train_gan_on_batch(data, model, netD, epoch, batch_idx, params):
+    """
+    Train MDE network as a generator and separate Discriminator net in GAN fashion
+    :param data: batch data
+    :param model: MDE net
+    :param netD: Discriminator net
+    :param epoch: current epoch
+    :param batch_idx: current batch id
+    :return: losses
+    """
+    # Update D network: maximize log(D(x)) + log(1 - D(G(z)))
+    # Establish convention for real and fake labels during training
+    real_label = 1
+    fake_label = 0
+    # Train with all-real batch
+    netD.zero_grad()
+    dm_inp = Variable(data['depth']).to(device, dtype=torch.float).unsqueeze(1)
+    label = torch.full((params['batch_size'],), real_label, device=device)
+    output = netD(dm_inp).view(-1)
+    errD_real = criterion_bce(output, label)
+    errD_real.backward()
+    D_x = output.mean().item()
 
-    save_dict(params, f'{MODEL_DIR}/{model_class.__name__}_run{RUN_CNT}')
+    # Train with all-fake batch
+    noise = torch.randn(params['batch_size'], params['num_channels'], params['img_width'], params['img_width'], device=device)
+    fake = model(noise)
+    label.fill_(fake_label)
+    output = netD(fake.detach()).view(-1)
+    errD_fake = criterion_bce(output, label)
+    errD_fake.backward()
+    D_G_z1 = output.mean().item()
+    errD = errD_real + errD_fake
+    optimizerD.step()
 
+    # Update G network: maximize log(D(G(z)))
+    optimizer.zero_grad()
+    label.fill_(real_label)  # fake labels are real for generator cost
+    output = netD(fake).view(-1)
+    errG = criterion_bce(output, label)
+    gen_loss, _, _, _, _, _, _ = calc_loss(data, model, l1_criterion, grad_criterion, normal_criterion,
+                                           device=device,
+                                           interpolate=params['interpolate'],
+                                           edge_factor=params['edge_factor'],
+                                           batch_idx=batch_idx)
+    gen_loss.backward()
+    errG = params_gan['loss_weight_gen'] * errG
+    errG.backward()
+    D_G_z2 = output.mean().item()
+    optimizer.step()
+    print(f'Epoch {epoch}, batch_idx {batch_idx} train loss: {gen_loss}, gen-discr loss {errG}')
+    if batch_idx % 50 == 0:
+        print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
+              % (epoch, params['num_epochs'], batch_idx, len(train_loader),
+                 errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
+    return gen_loss, errG, errD
+
+
+def init_data(datadir, labeldir, params):
     random_seed = params['random_seed']
-    batch_size = params['batch_size']
-    num_workers = params['num_workers']
     normalise = params['normalise']
     normalise_type = params['normalise_type']
     interpolate = params['interpolate']
     num_channels = params['num_channels']
+    test_size = params['test_size']
+    batch_size = params['batch_size']
+    num_workers = params['num_workers']
 
-    loader_init_fn = lambda worker_id: np.random.seed(random_seed + worker_id)
-
-    # dataset
-    parser = DatadirParser(SPLITS_DIR, DEPTH_MAPS)
+    parser = DatadirParser(datadir, labeldir)
     images, depths = parser.get_parsed()
-    splitter = TrainValTestSplitter(images, depths, random_seed=random_seed, test_size=params['test_size'])
+    splitter = TrainValTestSplitter(images, depths, random_seed=random_seed, test_size=test_size)
 
     train_ds = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth,
                            num_channels=num_channels, normalise=normalise, normalise_type=normalise_type,
@@ -153,100 +160,139 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(validation_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    return train_loader, val_loader, test_loader
 
-    # network initialization
-    model = FPNNet(num_channels=num_channels)
-    # Create the Discriminator
+
+def init_network(params, params_gan):
+    netD = None
+    optimizerD = None
+    train_gan = params['train_gan']
     ngpu = torch.cuda.device_count()
 
-    if params['parallel']:
-        if ngpu > 1:
-            print(f"Using {ngpu} GPUs")
-            model = nn.DataParallel(model, list(range(ngpu)))
-    model.to(device)
+    modelMDE = FPNNet(num_channels=params['num_channels'])
+    if train_gan: netD = Discriminator(ngpu)
 
-    total_params = sum(p.numel() for p in model.parameters())
-    print(f'\nNum of parameters: {total_params}')
+    # wrap into DataParallel to run in several GPUs
+    if params['parallel'] and ngpu > 1:
+        print(f"Using {ngpu} GPUs")
+        modelMDE = nn.DataParallel(modelMDE, list(range(ngpu)))
+        if train_gan: netD = nn.DataParallel(netD, list(range(ngpu)))
 
+    modelMDE.to(device)
+    optimizer = torch.optim.Adam(modelMDE.parameters(), lr=params['lr'], weight_decay=4e-5)
+    lmbda = lambda epoch: params['lr_decay']
+    scheduler = MultiplicativeLR(optimizer, lr_lambda=lmbda)
+
+    total_params = sum(p.numel() for p in modelMDE.parameters())
+    print(f'\nNum of parameters in MDE net: {total_params}')
+
+    if train_gan:
+        netD.to(device)
+        netD.apply(weights_init)
+        total_params_d = sum(p.numel() for p in netD.parameters())
+        print(f'\nNum of parameters in Discriminator net: {total_params_d}')
+        optimizerD = torch.optim.Adam(netD.parameters(), lr=params_gan['lr'], betas=(params_gan['beta1_d'], 0.999))
+    return modelMDE, netD, optimizer, optimizerD, scheduler
+
+
+def train_on_batch(data, modelMDE, netD, epoch, batch_idx, params):
+    loss = 0
+    if not train_gan:
+        loss = train_mde_on_batch(data, modelMDE, FIG_SAVE_PATH, epoch, batch_idx, params)
+    else:
+        loss, errG, errD = train_gan_on_batch(data, modelMDE, netD, epoch, batch_idx, params)
+        G_losses.append(errG.item())
+        D_losses.append(errD.item())
+    train_loss.append(loss)
+    return train_loss, G_losses, D_losses
+
+
+if __name__ == '__main__':
+    # create necessary dirs
+    try:
+        os.makedirs(FIG_SAVE_PATH)
+        os.makedirs(MODEL_DIR)
+    except OSError as e:
+        print(e)
+        pass
+
+    save_dict(params, f'{MODEL_DIR}/{model_class.__name__}_run{RUN_CNT}')
+
+    parallel = params['parallel']
+    train_gan = params['train_gan']
+
+    loader_init_fn = lambda worker_id: np.random.seed(params['random_seed'] + worker_id)
+
+    # dataset
+    train_loader, val_loader, test_loader = init_data(SPLITS_DIR, DEPTH_MAPS, params)
+
+    # network initialization
+    modelMDE, netD, optimizer, optimizerD, scheduler = init_network(params, params_gan)
+
+    # define error criterions
     l1_criterion = MaskedL1Loss()
     grad_criterion = GradLoss()
     normal_criterion = NormalLoss()
-    ssim = SSIM()
+    criterion_bce = nn.BCELoss()
+    # ssim = SSIM()
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'], weight_decay=4e-5)
-    lmbda = lambda epoch: params['lr_decay']
-    scheduler = MultiplicativeLR(optimizer, lr_lambda=lmbda)
     total_train_loss, total_val_loss = [], []
+    total_G_loss, total_D_loss = [], []
     first_epoch = 0
+
     if params['train']:
         print("\nTRAINING STARTING...")
-        if params['load_from_chk']:
+        if params['load_from_chk'] and not train_gan:
             checkpoint = torch.load(params['chk_point_path'])
-            model.load_state_dict(checkpoint['model_state_dict'])
+            if parallel:
+                modelMDE.module.load_state_dict(checkpoint['model_state_dict'])
+            else:
+                modelMDE.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            first_epoch = checkpoint['epoch']
+            first_epoch = checkpoint['epoch'] + 1
 
+        ## Start training
         for epoch in range(first_epoch, params['num_epochs']):
             print(f'====== Epoch {epoch} ======')
-            train_loss, valid_loss = [], []
-            model.train()
+            train_loss, valid_loss, G_losses, D_losses = [], [], [], []
+            # Train model
+            modelMDE.train()
             for batch_idx, data in enumerate(train_loader):
-                loss = train_on_batch(data=data, model=model,
-                                      l1_criterion=l1_criterion, criterion_img=grad_criterion, criterion_norm=normal_criterion,
-                                      criterion_ssim=ssim,
-                                      fig_save_path=FIG_SAVE_PATH, epoch=epoch, batch_idx=batch_idx)
-                print(f'Epoch {epoch}, batch_idx {batch_idx} train loss: {loss}')
-                train_loss.append(loss)
-            if params['save_chk']:
-                save_model_chk(epoch, model, optimizer, f'{MODEL_DIR}/model_chkp_epoch_{epoch}.pth')
+                train_loss, G_losses, D_losses = train_on_batch(data, modelMDE, netD, epoch, batch_idx, params)
 
-            model.eval()
+            if params['save_chk'] and not train_gan:
+                save_model_chk(epoch, modelMDE, optimizer, f'{MODEL_DIR}/model_chkp_epoch_{epoch}.pth')
+
+            # Validate model
+            modelMDE.eval()
             with torch.no_grad():
                 for batch_idx, data in enumerate(val_loader):
-                    loss = validate_on_batch(data=data, model=model,
-                                             l1_criterion=l1_criterion, criterion_img=grad_criterion, criterion_norm=normal_criterion,
-                                             criterion_ssim=ssim,
-                                             fig_save_path=FIG_SAVE_PATH, epoch=epoch, batch_idx=batch_idx)
+                    loss = validate_on_batch(data, modelMDE, FIG_SAVE_PATH, epoch, batch_idx, params)
                     print(f'Epoch {epoch}, batch_idx {batch_idx} val loss: {loss}')
                     valid_loss.append(loss)
 
-            # enf of epoch actions
+            # End of epoch actions
             scheduler.step()
+
             total_train_loss = np.concatenate((total_train_loss, train_loss))
             total_val_loss = np.concatenate((total_val_loss, valid_loss))
+            total_G_loss = np.concatenate((total_G_loss, G_losses))
+            total_D_loss = np.concatenate((total_D_loss, D_losses))
             plot_metrics(metrics=[train_loss, valid_loss],
                          names=["Train losses", "Validation losses"],
-                         save_path=FIG_SAVE_PATH,
-                         mode=f"train_val_{epoch}")
-        plot_metrics(metrics=[total_train_loss, total_val_loss],
-                     names=["Total Train losses", "Total Validation losses"],
-                     save_path=FIG_SAVE_PATH,
-                     mode=f"train_val")
-        torch.save(model.state_dict(), FULL_MODEL_SAVING_PATH)
+                         save_path=FIG_SAVE_PATH, mode=f"train_val_{epoch}")
 
+        plot_metrics(metrics=[total_train_loss, total_val_loss, total_G_loss, total_D_loss],
+                     names=["Total Train losses", "Total Validation losses", "Total Train Gen Loss", "Total Train Discr Loss"],
+                     save_path=FIG_SAVE_PATH, mode=f"train_val")
+        torch.save(modelMDE.module.state_dict(), FULL_MODEL_SAVING_PATH)
+
+    # Evaluate model
     if params['test']:
-        print("\nEVALUATION STARTING...")
-        model.load_state_dict(torch.load(FULL_MODEL_SAVING_PATH))
-        model.eval()
-        rmse_abs, rmse, l1, l1_abs = [], [], [], []
-        with torch.no_grad():
-            for batch_idx, data in enumerate(test_loader):
-                _, out, target, _, orig_inp, range_min, range_max = get_prediction(data, model)
-                rmse_loss, l1_loss, pixel_losses, l1_abs_loss, rmse_abs_loss = compute_metrics(out, target, range_min, range_max)
-                rmse.append(rmse_loss)
-                l1.append(l1_loss)
-                rmse_abs.append(rmse_abs_loss)
-                l1_abs.append(l1_abs_loss)
-                if params['plot_sample']:
-                    log_sample(batch_idx, 50, out, target, orig_inp, None, pixel_losses, FIG_SAVE_PATH, "", "eval")
-                    if batch_idx % 100 == 0:
-                        save_dm(out[0][0, :, :].cpu().detach().numpy(), target[0][0, :, :].cpu().detach().numpy(), FIG_SAVE_PATH, batch_idx)
-        results = {
-            "Mean RMSE Loss": np.mean(rmse),
-            "Mean L1 Loss": np.mean(l1),
-            "Mean RMSE Abs Loss": np.mean(rmse_abs),
-            "Mean L1 Abs Loss": np.mean(l1_abs)
-        }
-        for key in results:
-            print(f'{key}: {results[key]}')
-        save_dict(results, f'{MODEL_DIR}/{model_class.__name__}_run{RUN_CNT}_eval_results')
+        eval(modelMDE,
+             test_loader,
+             device, params['interpolate'],
+             FULL_MODEL_SAVING_PATH,
+             f'{MODEL_DIR}/{model_class.__name__}_run{RUN_CNT}_eval_results',
+             FIG_SAVE_PATH,
+             plot=True)

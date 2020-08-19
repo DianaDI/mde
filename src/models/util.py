@@ -5,6 +5,7 @@ import json
 import numpy as np
 import torch
 import torch.nn as nn
+import cv2
 
 matplotlib.use('Agg')
 plt.rcParams.update({'font.size': 7})
@@ -64,11 +65,22 @@ def plot_sample(orig, output, target, edges, pixel_loss, save_path, epoch, batch
         fig.delaxes(axes[1][2])
 
     fig.delaxes(axes[0][2])
-
     fig.tight_layout(pad=1.0)
     plt.savefig(f'{save_path}/{mode}_sample_{epoch}_{batch_idx}.png', dpi=300)
     plt.clf()
     plt.close('all')
+
+
+def log_sample(cur_batch, plot_every, out, target, inp, edges, pixel_loss, path, epoch, mode):
+    if cur_batch % plot_every == 0:
+        plot_sample(cv2.merge((inp[0][0, :, :].numpy(),
+                               inp[0][1, :, :].numpy(),
+                               inp[0][2, :, :].numpy())),
+                    out[0][0, :, :].cpu().detach().numpy(),
+                    target[0][0, :, :].cpu().detach().numpy(),
+                    edges[0][0, :, :].cpu().numpy() if mode != "eval" else None,
+                    pixel_loss[0][0, :, :].cpu().detach().numpy(),
+                    path, epoch, cur_batch, mode)
 
 
 def save_dm(output, target, save_path, batch_idx, mode="eval"):
