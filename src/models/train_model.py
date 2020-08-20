@@ -37,6 +37,68 @@ def save_model_chk(epoch, model, optimizer, path):
     }, path)
 
 
+def init_data(datadir, labeldir, params):
+    random_seed = params['random_seed']
+    normalise = params['normalise']
+    normalise_type = params['normalise_type']
+    interpolate = params['interpolate']
+    num_channels = params['num_channels']
+    test_size = params['test_size']
+    batch_size = params['batch_size']
+    num_workers = params['num_workers']
+
+    parser = DatadirParser(datadir, labeldir)
+    images, depths = parser.get_parsed()
+    splitter = TrainValTestSplitter(images, depths, random_seed=random_seed, test_size=test_size)
+
+    train_ds = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth,
+                           num_channels=num_channels, normalise=normalise, normalise_type=normalise_type,
+                           interpolate=interpolate)
+    validation_ds = BeraDataset(img_filenames=splitter.data_val.image, depth_filenames=splitter.data_val.depth,
+                                num_channels=num_channels, normalise=normalise, normalise_type=normalise_type,
+                                interpolate=interpolate)
+    test_ds = BeraDataset(img_filenames=splitter.data_test.image, depth_filenames=splitter.data_test.depth,
+                          num_channels=num_channels, normalise=normalise, normalise_type=normalise_type,
+                          interpolate=interpolate)
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(validation_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    return train_loader, val_loader, test_loader
+
+
+def init_network(params, params_gan):
+    netD = None
+    optimizerD = None
+    train_gan = params['train_gan']
+    ngpu = torch.cuda.device_count()
+
+    modelMDE = FPNNet(num_channels=params['num_channels'])
+    if train_gan: netD = Discriminator(ngpu)
+
+    # wrap into DataParallel to run in several GPUs
+    if params['parallel'] and ngpu > 1:
+        print(f"Using {ngpu} GPUs")
+        modelMDE = nn.DataParallel(modelMDE, list(range(ngpu)))
+        if train_gan: netD = nn.DataParallel(netD, list(range(ngpu)))
+
+    modelMDE.to(device)
+    optimizer = torch.optim.Adam(modelMDE.parameters(), lr=params['lr'], weight_decay=4e-5)
+    lmbda = lambda epoch: params['lr_decay']
+    scheduler = MultiplicativeLR(optimizer, lr_lambda=lmbda)
+
+    total_params = sum(p.numel() for p in modelMDE.parameters())
+    print(f'\nNum of parameters in MDE net: {total_params}')
+
+    if train_gan:
+        netD.to(device)
+        netD.apply(weights_init)
+        total_params_d = sum(p.numel() for p in netD.parameters())
+        print(f'\nNum of parameters in Discriminator net: {total_params_d}')
+        optimizerD = torch.optim.Adam(netD.parameters(), lr=params_gan['lr'], betas=(params_gan['beta1_d'], 0.999))
+    return modelMDE, netD, optimizer, optimizerD, scheduler
+
+
 def train_mde_on_batch(data, model, fig_save_path, epoch, batch_idx, params):
     """
     Train the main MDE model
@@ -130,69 +192,7 @@ def train_gan_on_batch(data, model, netD, epoch, batch_idx, params):
         print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
               % (epoch, params['num_epochs'], batch_idx, len(train_loader),
                  errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
-    return gen_loss, errG, errD
-
-
-def init_data(datadir, labeldir, params):
-    random_seed = params['random_seed']
-    normalise = params['normalise']
-    normalise_type = params['normalise_type']
-    interpolate = params['interpolate']
-    num_channels = params['num_channels']
-    test_size = params['test_size']
-    batch_size = params['batch_size']
-    num_workers = params['num_workers']
-
-    parser = DatadirParser(datadir, labeldir)
-    images, depths = parser.get_parsed()
-    splitter = TrainValTestSplitter(images, depths, random_seed=random_seed, test_size=test_size)
-
-    train_ds = BeraDataset(img_filenames=splitter.data_train.image, depth_filenames=splitter.data_train.depth,
-                           num_channels=num_channels, normalise=normalise, normalise_type=normalise_type,
-                           interpolate=interpolate)
-    validation_ds = BeraDataset(img_filenames=splitter.data_val.image, depth_filenames=splitter.data_val.depth,
-                                num_channels=num_channels, normalise=normalise, normalise_type=normalise_type,
-                                interpolate=interpolate)
-    test_ds = BeraDataset(img_filenames=splitter.data_test.image, depth_filenames=splitter.data_test.depth,
-                          num_channels=num_channels, normalise=normalise, normalise_type=normalise_type,
-                          interpolate=interpolate)
-
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = DataLoader(validation_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    return train_loader, val_loader, test_loader
-
-
-def init_network(params, params_gan):
-    netD = None
-    optimizerD = None
-    train_gan = params['train_gan']
-    ngpu = torch.cuda.device_count()
-
-    modelMDE = FPNNet(num_channels=params['num_channels'])
-    if train_gan: netD = Discriminator(ngpu)
-
-    # wrap into DataParallel to run in several GPUs
-    if params['parallel'] and ngpu > 1:
-        print(f"Using {ngpu} GPUs")
-        modelMDE = nn.DataParallel(modelMDE, list(range(ngpu)))
-        if train_gan: netD = nn.DataParallel(netD, list(range(ngpu)))
-
-    modelMDE.to(device)
-    optimizer = torch.optim.Adam(modelMDE.parameters(), lr=params['lr'], weight_decay=4e-5)
-    lmbda = lambda epoch: params['lr_decay']
-    scheduler = MultiplicativeLR(optimizer, lr_lambda=lmbda)
-
-    total_params = sum(p.numel() for p in modelMDE.parameters())
-    print(f'\nNum of parameters in MDE net: {total_params}')
-
-    if train_gan:
-        netD.to(device)
-        netD.apply(weights_init)
-        total_params_d = sum(p.numel() for p in netD.parameters())
-        print(f'\nNum of parameters in Discriminator net: {total_params_d}')
-        optimizerD = torch.optim.Adam(netD.parameters(), lr=params_gan['lr'], betas=(params_gan['beta1_d'], 0.999))
-    return modelMDE, netD, optimizer, optimizerD, scheduler
+    return gen_loss.item(), errG.item(), errD.item()
 
 
 def train_on_batch(data, modelMDE, netD, epoch, batch_idx, params):
@@ -201,8 +201,8 @@ def train_on_batch(data, modelMDE, netD, epoch, batch_idx, params):
         loss = train_mde_on_batch(data, modelMDE, FIG_SAVE_PATH, epoch, batch_idx, params)
     else:
         loss, errG, errD = train_gan_on_batch(data, modelMDE, netD, epoch, batch_idx, params)
-        G_losses.append(errG.item())
-        D_losses.append(errD.item())
+        G_losses.append(errG)
+        D_losses.append(errD)
     train_loss.append(loss)
     return train_loss, G_losses, D_losses
 
