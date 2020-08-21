@@ -19,7 +19,7 @@ class NormalLoss(nn.Module):
         prod = (grad_fake[:, :, None, :] @ grad_real[:, :, :, None]).squeeze(-1).squeeze(-1)
         fake_norm = torch.sqrt(torch.sum(grad_fake ** 2, dim=-1))
         real_norm = torch.sqrt(torch.sum(grad_real ** 2, dim=-1))
-        return 1 - torch.mean(prod / (fake_norm * real_norm))
+        return 1 - torch.mean(prod / ((fake_norm * real_norm) + 1e-10))
 
 
 class MaskedL1Loss(nn.Module):

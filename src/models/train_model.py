@@ -155,14 +155,16 @@ def train_gan_on_batch(data, model, netD, epoch, batch_idx, params):
     # Train with all-real batch
     netD.zero_grad()
     dm_inp = Variable(data['depth']).to(device, dtype=torch.float).unsqueeze(1)
-    label = torch.full((params['batch_size'],), real_label, device=device)
+    b_size = dm_inp.size(0)
+
+    label = torch.full((b_size,), real_label, device=device)
     output = netD(dm_inp).view(-1)
     errD_real = criterion_bce(output, label)
     errD_real.backward()
     D_x = output.mean().item()
 
     # Train with all-fake batch
-    noise = torch.randn(params['batch_size'], params['num_channels'], params['img_width'], params['img_width'], device=device)
+    noise = torch.randn(b_size, params['num_channels'], params['img_width'], params['img_width'], device=device)
     fake = model(noise)
     label.fill_(fake_label)
     output = netD(fake.detach()).view(-1)
@@ -183,7 +185,7 @@ def train_gan_on_batch(data, model, netD, epoch, batch_idx, params):
                                            edge_factor=params['edge_factor'],
                                            batch_idx=batch_idx)
     gen_loss.backward()
-    errG = params_gan['loss_weight_gen'] * errG
+    errG = params_gan['loss_weight_gan'] * errG
     errG.backward()
     D_G_z2 = output.mean().item()
     optimizer.step()

@@ -39,6 +39,6 @@ MODEL_SPECIFIC_PARAMS = {
         'beta1_d': 0.5,  # Beta1 hyperparam for Adam optimizers
         'nz': 256,  # Size of z latent vector (i.e. size of generator input)
         'ndf': 64,  # Size of feature maps in discriminator
-        'loss_weight_gen': 0.2
+        'loss_weight_gan': 0.2
     }
 }
