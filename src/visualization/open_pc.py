@@ -3,7 +3,7 @@ from src.data.las2xyz import LasReader
 
 if __name__ == "__main__":
     ## Read .las file
-    inFile = LasReader.read("../../data/KirbyLeafOff2017PointCloudEntireSite_0_8400.las")
+    inFile = LasReader.read("../../data/KirbyLeafOff2017PointCloudEntireSite_16191_49344.las")
 
     xyz = LasReader.get_scaled_dimensions(inFile)
     inFile.close()
@@ -13,7 +13,6 @@ if __name__ == "__main__":
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(xyz)
 
-    mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
-        size=10, origin=[min(xyz[:, 0]), min(xyz[:, 1]), min(xyz[:, 2])])
-    # o3d.visualization.draw_geometries([pcd, mesh_frame])
-    o3d.visualization.draw_geometries([pcd, mesh_frame])
+    # mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+    #     size=10, origin=[min(xyz[:, 0]), min(xyz[:, 1]), min(xyz[:, 2])])
+    o3d.visualization.draw_geometries([pcd])

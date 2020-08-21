@@ -10,6 +10,7 @@ from tqdm import tqdm
 from os.path import basename
 import multiprocessing
 from joblib import Parallel, delayed
+from src.data import IMG_WIDTH
 
 log = True
 
@@ -59,15 +60,16 @@ def process_row(y):
 
 
 if __name__ == "__main__":
-    data_dir = f'/mnt/data/davletshina/datasets/Bera_MDE/'
-    pc_path = "/mnt/data/davletshina/datasets/Bera_MDE/KirbyLeafOff2017PointCloudEntireSite.las"
-    tif_path = "/mnt/data/davletshina/datasets/Bera_MDE/KirbyLeafOff2017RGBNEntireSitePCCrop.tif"
+    data_dir = f'/mnt/data/davletshina/datasets/Bera_MDE'
+    pc_path = f'{data_dir}/KirbyLeafOff2017PointCloudEntireSite.las'
+    tif_path = f'{data_dir}/KirbyLeafOff2017RGBNEntireSitePCCrop.tif'
+    splits_dir = 'splits3'
 
     pc_name = basename(pc_path)[:-4]
     tif_name = basename(tif_path)[:-4]
 
-    pc_out_dir = data_dir + pc_name
-    tif_out_dir = data_dir + tif_name
+    pc_out_dir = f'{data_dir}/{splits_dir}/{pc_name}'
+    tif_out_dir = f'{data_dir}/{splits_dir}/{tif_name}'
     try:
         os.makedirs(pc_out_dir)
         os.makedirs(tif_out_dir)
@@ -83,10 +85,10 @@ if __name__ == "__main__":
     xoffset, w1, h1, yoffset, w2, h2 = raster.GetGeoTransform()
 
     # parallel sliding square window
-    window = 1200
+    window = IMG_WIDTH + 1
     step = window
 
-    num_cores = multiprocessing.cpu_count()
+    num_cores = multiprocessing.cpu_count() - 2
     print(f'RUNNING ON {num_cores} CPUs')
     ys = tqdm(range(window - 1, height, step))
     Parallel(n_jobs=num_cores)(delayed(process_row)(y) for y in ys)
