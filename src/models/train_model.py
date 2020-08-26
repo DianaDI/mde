@@ -236,6 +236,7 @@ if __name__ == '__main__':
     grad_criterion = GradLoss()
     normal_criterion = NormalLoss()
     criterion_bce = nn.BCELoss()
+    huber = nn.SmoothL1Loss()  # todo replace l1 loss
     # ssim = SSIM()
 
     total_train_loss, total_val_loss = [], []

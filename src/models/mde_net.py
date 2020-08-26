@@ -105,4 +105,5 @@ class FPNNet(nn.Module):
             p2 = self.upconv(p2)
         # flat = self.flatten(p2)
         # range = self.predict_range(flat)
-        return self.predict2(self.predict1(p2))  # , range
+        p1 = self.predict1(p2)
+        return self.predict2(p1)  # , range
