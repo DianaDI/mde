@@ -69,5 +69,6 @@ def get_edges(image, dim, treshold=0.7, visualise=False, read_from_file=False):
         plt.show()
     return edges
 
-# get_edges("../../data/raw/KirbyLeafOn2017RGBNEntireSite_4617_0.tif", dim=(128, 128), visualise=True)
-# get_edges("../../data/raw/KirbyLeafOff2017RGBNEntireSitePCCrop_42579_3078.tif", dim=(128, 128), visualise=True)
+#get_edges("../../data/raw/KirbyLeafOn2017RGBNEntireSite_4617_0.tif", dim=(128, 128), visualise=True, read_from_file=True)
+#get_edges("../../data/raw/KirbyLeafOff2017RGBNEntireSitePCCrop_42579_3078.tif", dim=(128, 128), visualise=True, read_from_file=True)
+#get_edges("../../data/raw/KirbyLeafOn2017RGBNEntireSite_4617_0.tif", dim=(128, 128), visualise=True, read_from_file=True)

@@ -8,7 +8,7 @@ class GradLoss(nn.Module):
 
     # L1 norm
     def forward(self, grad_fake, grad_real):
-        return torch.mean(torch.abs(grad_real - grad_fake))
+        return nn.L1Loss()(grad_real, grad_fake)
 
 
 class NormalLoss(nn.Module):
@@ -44,3 +44,25 @@ class L1Loss(nn.Module):
     def forward(self, pred, target):
         losses = torch.abs(target - pred)
         return torch.mean(losses), losses
+
+
+class HuberLoss(nn.Module):
+    def __init__(self):
+        super(HuberLoss, self).__init__()
+
+    def forward(self, pred, target):
+        losses = nn.SmoothL1Loss(reduction="none")(pred, target)
+        return torch.mean(losses), losses
+
+
+class MaskedHuberLoss(nn.Module):
+    def __init__(self):
+        super(MaskedHuberLoss, self).__init__()
+
+    def forward(self, pred, target, mask, device, factor=0.6):
+        mask = (mask * factor).to(device, dtype=torch.float)
+        ones = (torch.ones(mask.shape).to(device) * (1 - factor)).to(device)
+        mask = torch.where(mask == 0, ones, mask).to(device, dtype=torch.float)
+        losses = nn.SmoothL1Loss(reduction="none")(pred, target)
+        masked = losses*mask
+        return torch.mean(masked), masked

@@ -22,21 +22,21 @@ def get_prediction(data, model, device, interpolate):
 
 def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, device, interpolate, edge_factor, batch_idx, reg=False):
     inp, out, target, edges, orig_inp, _, _ = get_prediction(data, model, device, interpolate)
-    # imgrad_true = imgrad_yx(target, device)
-    # imgrad_out = imgrad_yx(out, device)
+    imgrad_true = imgrad_yx(target, device)
+    imgrad_out = imgrad_yx(out, device)
     l1_loss, l1_losses = l1_criterion(out, target, edges, device, factor=edge_factor)
-    loss_grad = 0#criterion_img(imgrad_out, imgrad_true)
-    loss_normal = 0#criterion_norm(imgrad_out, imgrad_true)
-    total_loss = l1_loss #+ 0.5 * loss_grad + 0.5 * loss_normal  # + 0.5 * loss_ssim todo run with this setting
+    loss_grad = criterion_img(imgrad_out, imgrad_true)
+    loss_normal = criterion_norm(imgrad_out, imgrad_true)
+    total_loss = l1_loss + 0.5 * loss_grad + 0.5 * loss_normal  # + 0.5 * loss_ssim todo run with this setting
     if reg:
         loss_reg = Variable(torch.tensor(0.)).to(device)
         for param in model.parameters():
             loss_reg = loss_reg + param.norm(2)
         total_loss = total_loss + 1e-20 * loss_reg
     if batch_idx % 10 == 0:
-        print(f'DM l1-loss: {l1_loss.item()}, '
-              f'Loss Grad: {loss_grad}, '#loss_grad.item()},  '
-              f'Loss Normal: {loss_normal}')#loss_normal.item()}, ')
+        print(f'L1-loss: {l1_loss.item()}, '
+              f'Loss Grad: {loss_grad.item()},  '
+              f'Loss Normal: {loss_normal.item()}')
     return total_loss, l1_losses, out, target, inp, orig_inp, edges
 
 

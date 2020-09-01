@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import MultiplicativeLR
 from src.data.make_dataset import DatadirParser, TrainValTestSplitter, BeraDataset
 from src.data import SPLITS_DIR, DEPTH_MAPS
 from src.models.mde_net import FPNNet
-from src.models.losses import GradLoss, NormalLoss, MaskedL1Loss
+from src.models.losses import GradLoss, NormalLoss, MaskedL1Loss, HuberLoss, MaskedHuberLoss
 from src.models.util import plot_metrics, save_dict, log_sample
 from src.models.run_params import COMMON_PARAMS, MODEL_SPECIFIC_PARAMS, \
     MODEL_DIR, FIG_SAVE_PATH, FULL_MODEL_SAVING_PATH, RUN_CNT
@@ -74,7 +74,10 @@ def init_network(params, params_gan):
     ngpu = torch.cuda.device_count()
 
     modelMDE = FPNNet(num_channels=params['num_channels'])
-    if train_gan: netD = Discriminator(ngpu)
+    print(modelMDE)
+    if train_gan:
+        netD = Discriminator(ngpu)
+        print(netD)
 
     # wrap into DataParallel to run in several GPUs
     if params['parallel'] and ngpu > 1:
@@ -110,7 +113,7 @@ def train_mde_on_batch(data, model, fig_save_path, epoch, batch_idx, params):
     :return: loss on batch
     """
     loss, l1_losses, out, target, inp, orig_inp, edges = calc_loss(data, model,
-                                                                   l1_criterion, grad_criterion, normal_criterion,
+                                                                   huber, grad_criterion, normal_criterion,
                                                                    device=device,
                                                                    interpolate=params['interpolate'],
                                                                    edge_factor=params['edge_factor'],
@@ -236,7 +239,7 @@ if __name__ == '__main__':
     grad_criterion = GradLoss()
     normal_criterion = NormalLoss()
     criterion_bce = nn.BCELoss()
-    huber = nn.SmoothL1Loss()  # todo replace l1 loss
+    huber = MaskedHuberLoss()  # todo replace l1 loss
     # ssim = SSIM()
 
     total_train_loss, total_val_loss = [], []
@@ -288,7 +291,7 @@ if __name__ == '__main__':
         plot_metrics(metrics=[total_train_loss, total_val_loss, total_G_loss, total_D_loss],
                      names=["Total Train losses", "Total Validation losses", "Total Train Gen Loss", "Total Train Discr Loss"],
                      save_path=FIG_SAVE_PATH, mode=f"train_val")
-        torch.save(modelMDE.module.state_dict(), FULL_MODEL_SAVING_PATH)
+        torch.save(modelMDE.state_dict(), FULL_MODEL_SAVING_PATH)
 
     # Evaluate model
     if params['test']:
