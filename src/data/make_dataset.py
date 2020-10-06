@@ -98,11 +98,10 @@ class BeraDataset(Dataset):
         edges = get_edges(image, self.dm_dim)
         if self.num_channels == 3:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        #image = cv2.resize(image, (0, 0), fx=0.125, fy=0.125)
         label_orig = np.load(self.depth_filenames[index], allow_pickle=True)
         label = rebin(label_orig, self.dm_dim)
         range = np.array([np.min(label[np.nonzero(label)]), np.max(label)])
-        # range = range - (MIN_DEPTH / 1000)
+        # range = range - MIN_DEPTH
         if self.normalize:
             if self.normalize_type == 'local':
                 label = minmax_over_nonzero(label)

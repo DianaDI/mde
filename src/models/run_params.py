@@ -1,17 +1,17 @@
 from src.data import IMG_WIDTH, IMG_HEIGHT
 
-RUN_CNT = 84
+RUN_CNT = "87_gan_fixed"
 MODEL_DIR = f"run{RUN_CNT}"
 FULL_MODEL_SAVING_PATH = f"{MODEL_DIR}/fpn_model_run{RUN_CNT}.pth"
-FIG_SAVE_PATH = f"/mnt/data/davletshina/mde/reports/figures/{MODEL_DIR}"
+FIG_SAVE_PATH = f"/mnt/data/davletshina/mde/reports/figures/{MODEL_DIR}_test"
 
 COMMON_PARAMS = {
     'train': True,
     'test': True,
-    'load_from_chk': False,
-    'chk_point_path': 'run83/model_chkp_epoch_29.pth',
+    'load_from_chk': True,
+    'chk_point_path': "run87_gan_fixed/model_chkp_epoch_12.pth",
     'normalise': True,
-    'normalise_type': 'local',  # 'global', 'local'
+    'normalise_type': 'local',  # possible 'global', 'local'
     'random_seed': 42,
     'num_workers': 10,  # set number of cpu cores for data processing
     'parallel': True,
@@ -21,18 +21,18 @@ COMMON_PARAMS = {
     'save_chk': True,
     'interpolate': True,
     'edge_factor': 0.6,
-    'train_gan': True,
+    'train_gan': False,
     'img_height': IMG_HEIGHT,
     'img_width': IMG_WIDTH
 }
 
 MODEL_SPECIFIC_PARAMS = {
     'FPNNet': {
-        'num_channels': 3,
+        'num_channels': 4,
         'lr': 0.00001,
         'lr_decay': 0.95,
-        'batch_size': 20,
-        'num_epochs': 40
+        'batch_size': 1,
+        'num_epochs': 15
     },
     'Discriminator': {
         'lr': 0.00001,
