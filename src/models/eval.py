@@ -20,14 +20,14 @@ def get_prediction(data, model, device, interpolate):
     return inp, out, target, edges.detach(), orig_inp.detach(), range_min.detach(), range_max.detach()
 
 
-def calc_loss(data, model, l1_criterion, criterion_img, criterion_norm, device, interpolate, edge_factor, batch_idx, reg=False):
+def calc_loss(data, model, criterion1, criterion_img, criterion_norm, device, interpolate, edge_factor, batch_idx, reg=False):
     inp, out, target, edges, orig_inp, _, _ = get_prediction(data, model, device, interpolate)
     imgrad_true = imgrad_yx(target, device)
     imgrad_out = imgrad_yx(out, device)
-    l1_loss, l1_losses = l1_criterion(out, target, edges, device, factor=edge_factor)
+    l1_loss, l1_losses = criterion1(out, target, edges, device, factor=edge_factor)
     loss_grad = criterion_img(imgrad_out, imgrad_true)
     loss_normal = criterion_norm(imgrad_out, imgrad_true)
-    total_loss = l1_loss + 0.5 * loss_grad + 0.5 * loss_normal  # + 0.5 * loss_ssim todo run with this setting
+    total_loss = l1_loss + 0.3 * loss_grad + 0.5 * loss_normal  # + 0.5 * loss_ssim
     if reg:
         loss_reg = Variable(torch.tensor(0.)).to(device)
         for param in model.parameters():
@@ -54,9 +54,9 @@ def eval(model, test_loader, device, interpolate, model_save_path, results_save_
             rmse_abs.append(rmse_abs_loss)
             l1_abs.append(l1_abs_loss)
             if plot:
-                log_sample(batch_idx, 50, out, target, orig_inp, None, pixel_losses, fig_save_path, "", "eval")
-                if batch_idx % 100 == 0:
-                    save_dm(out[0][0, :, :].cpu().detach().numpy(), target[0][0, :, :].cpu().detach().numpy(), fig_save_path, batch_idx)
+                log_sample(batch_idx, 1, out, target, orig_inp, None, pixel_losses, fig_save_path, "", "eval")
+            # if batch_idx % 1 == 0:
+            save_dm(out[0][0, :, :].cpu().detach().numpy(), target[0][0, :, :].cpu().detach().numpy(), fig_save_path, batch_idx)
     results = {
         "Mean RMSE Loss": np.mean(rmse),
         "Mean L1 Loss": np.mean(l1),

@@ -1,5 +1,6 @@
 import torch
 import math
+import copy
 from src.data.transforms import minmax_reverse
 from src.models.losses import L1Loss
 
@@ -12,17 +13,18 @@ def mean_relative_error(output, target):
 
 
 def root_mean_squared_error(output, target):
-    # loss = torch.mean(torch.sqrt((output - target) ** 2))
     loss = torch.nn.MSELoss().forward(output, target)
     return math.sqrt(loss.item())
 
 
 def get_absolute_labels(output, target, min, max):
-    for batch in range(len(output)):
-        output[batch] = minmax_reverse(output[batch], min[batch], max[batch])
-    for batch in range(len(target)):
-        target[batch] = minmax_reverse(target[batch], min[batch], max[batch])
-    return output, target
+    res_output = copy.deepcopy(output)
+    res_target = copy.deepcopy(target)
+    for batch in range(len(res_output)):
+        res_output[batch][0] = minmax_reverse(res_output[batch], min[batch], max[batch])
+    for batch in range(len(res_target)):
+        res_target[batch][0] = minmax_reverse(res_target[batch], min[batch], max[batch])
+    return res_output, res_target
 
 
 def l1_absolute_error(output, target, min, max):

@@ -29,7 +29,4 @@ def show_dm(path, processed=True, adjust=10):
             dm = interpolate_on_missing(dm)
     dm2pc(dm * adjust)
 
-
 # show_dm("../../data/KirbyLeafOn2017DMEntireSite_107217_31293.dmp", processed=False)
-show_dm("../../data/processed/eval_dm_target_200.dmp")
-show_dm("../../data/processed/eval_dm_output_200.dmp")

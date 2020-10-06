@@ -55,6 +55,22 @@ class HuberLoss(nn.Module):
         return torch.mean(losses), losses
 
 
+class CustomHuberLoss(nn.Module):
+    def __init__(self):
+        super(CustomHuberLoss, self).__init__()
+
+    def forward(self, pred, target, device, mask=None, factor=0.6, delta=1):
+        losses = torch.where(abs(pred - target) <= delta,
+                             0.5 * (pred - target) ** 2,
+                             delta * abs(pred - target) - 0.5 * delta ** 2).to(device)
+        if mask != None:
+            mask = (mask * factor).to(device, dtype=torch.float)
+            ones = (torch.ones(mask.shape).to(device) * (1 - factor)).to(device)
+            mask = torch.where(mask == 0, ones, mask).to(device, dtype=torch.float)
+            losses = losses * mask
+        return torch.mean(losses), losses
+
+
 class MaskedHuberLoss(nn.Module):
     def __init__(self):
         super(MaskedHuberLoss, self).__init__()
@@ -64,5 +80,5 @@ class MaskedHuberLoss(nn.Module):
         ones = (torch.ones(mask.shape).to(device) * (1 - factor)).to(device)
         mask = torch.where(mask == 0, ones, mask).to(device, dtype=torch.float)
         losses = nn.SmoothL1Loss(reduction="none")(pred, target)
-        masked = losses*mask
+        masked = losses * mask
         return torch.mean(masked), masked

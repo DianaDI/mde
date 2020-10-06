@@ -27,8 +27,26 @@ def plot_metrics(metrics, names, save_path, mode):
 
 def plot_sample(orig, output, target, edges, pixel_loss, save_path, epoch, batch_idx, mode):
     imgs = [orig, target, output, edges, pixel_loss]
-    fig, axes = plt.subplots(nrows=2, ncols=3)
 
+    # uncomment to plot separate samples for report, comment section below
+    # plt.gca().set_axis_off()
+    # plt.gca().xaxis.set_major_locator(plt.NullLocator())
+    # plt.gca().yaxis.set_major_locator(plt.NullLocator())
+    # plt.margins(0, 0)
+    # plt.imshow(imgs[2])
+    # plt.savefig(f'{save_path}/{mode}_output_single_{batch_idx}.png', dpi=150, bbox_inches = 'tight',
+    # pad_inches = 0)
+    #
+    # plt.imshow(imgs[1])
+    # plt.savefig(f'{save_path}/{mode}_target_single_{batch_idx}.png', dpi=150, bbox_inches = 'tight',
+    # pad_inches = 0)
+    #
+    # plt.imshow(imgs[0])
+    # plt.savefig(f'{save_path}/{mode}_input_single_{batch_idx}.png', dpi=150, bbox_inches = 'tight',
+    # pad_inches = 0)
+
+    # plot samples in a grid
+    fig, axes = plt.subplots(nrows=2, ncols=3)
     ax0 = axes[0][0]
     ax0.title.set_text('Original img')
     im0 = ax0.imshow(imgs[0])
